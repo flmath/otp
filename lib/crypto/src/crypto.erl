@@ -2974,7 +2974,7 @@ jump_iv(<<X, Rest/binary>>, JumpIV) ->
 %%%================================================================
 -doc "Algorithms for sign and verify.".
 -doc(#{group => <<"Public Key Sign and Verify">>}).
--type pk_sign_verify_algs() :: rsa | dss | ecdsa | eddsa | mldsa() | slh_dsa().
+-type pk_sign_verify_algs() :: rsa | dss | ecdsa | sm2 | eddsa | mldsa() | slh_dsa().
 -type mldsa() :: mldsa44 | mldsa65 | mldsa87.
 -type mldsa_private() :: {seed | expandedkey, binary()}.
 -type mldsa_public() :: binary().
@@ -4373,7 +4373,7 @@ The key must be of the type indicated by the Type parameter.
 -spec privkey_to_pubkey(Type, EnginePrivateKeyRef) -> PublicKey when Type :: rsa | dss,
                                                                      EnginePrivateKeyRef :: engine_key_ref(),
                                                                      PublicKey ::  rsa_public() | dss_public() .
-privkey_to_pubkey(Alg, EngineMap) when Alg == rsa; Alg == dss; Alg == ecdsa ->
+privkey_to_pubkey(Alg, EngineMap) when Alg == rsa; Alg == dss; Alg == ecdsa; Alg == sm2 ->
     try ?nif_call(privkey_to_pubkey_nif(Alg, format_pkey(Alg,EngineMap))) of
         [_|_]=L -> map_ensure_bin_as_int(L);
         X -> X
@@ -4520,6 +4520,8 @@ format_pkey(_Alg, #{}=M) -> error({bad_engine_map, M});
 format_pkey(rsa, Key) ->
     map_ensure_int_as_bin(Key);
 format_pkey(ecdsa, [Key, Curve]) ->
+    {nif_curve_params(Curve), ensure_int_as_bin(Key)};
+format_pkey(sm2, [Key, Curve]) ->
     {nif_curve_params(Curve), ensure_int_as_bin(Key)};
 format_pkey(eddsa, [PubKey, Curve]) when  Curve == ed25519;
                                           Curve == ed448 ->

@@ -2736,7 +2736,9 @@ format_sign_key(#'ECPrivateKey'{privateKey = PrivKey, parameters = {namedCurve, 
     {eddsa, [PrivKey, ECCurve]};
 format_sign_key(#'ECPrivateKey'{privateKey = PrivKey, parameters = Param}) ->
     ECCurve = ec_curve_spec(Param),
-    {ecdsa, [PrivKey, ECCurve]};
+    if ECCurve == sm2 -> {sm2, [PrivKey, ECCurve]};
+       true -> {ecdsa, [PrivKey, ECCurve]}
+    end;
 format_sign_key(#'ML-DSAPrivateKey'{algorithm = Algo, seed = Key}) when Key =/= undefined ->
     {Algo, {seed, Key}};
 format_sign_key(#'ML-DSAPrivateKey'{algorithm = Algo, expandedkey = Key}) when Key =/= undefined ->
@@ -2756,7 +2758,9 @@ format_verify_key({#'ECPoint'{point = Point}, {namedCurve, Curve} = Param}) when
     {eddsa, [Point, ECCurve]};
 format_verify_key({#'ECPoint'{point = Point}, Param}) ->
     ECCurve = ec_curve_spec(Param),
-    {ecdsa, [Point, ECCurve]};
+    if ECCurve == sm2 -> {sm2, [Point, ECCurve]};
+       true -> {ecdsa, [Point, ECCurve]}
+    end;
 format_verify_key({Key,  #'Dss-Parms'{p = P, q = Q, g = G}}) ->
     {dss, [P, Q, G, Key]};
 format_verify_key({ed_pub, Curve, Key}) ->

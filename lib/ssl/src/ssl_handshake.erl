@@ -1796,9 +1796,11 @@ do_select_hashsign(HashSigns, PublicKeyAlgo, SupportedHashSigns) ->
                     rsa_pss_pss when PublicKeyAlgo  == rsa_pss_pss -> %% Backported
                         is_acceptable_hash_sign(Scheme, SupportedHashSigns);
                     ecdsa when (PublicKeyAlgo == ecdsa) andalso (H == sha) ->
-                        is_acceptable_hash_sign({H, S}, SupportedHashSigns) orelse  %% TLS-1.2 name
-                        %% TLS-1.3 legacy name
-                            is_acceptable_hash_sign(Scheme, SupportedHashSigns);
+                        true;
+                    ecdsa when (PublicKeyAlgo == ecdsa)  ->
+                        ssl_cipher:is_fallback(Version);
+                    sm2 when (PublicKeyAlgo == sm2) ->
+                        true;
                     ecdsa when (PublicKeyAlgo == ecdsa)  ->
                         is_acceptable_hash_sign({H, S}, SupportedHashSigns);
                     _ ->
@@ -2110,10 +2112,11 @@ certificate_authorities(CertDbHandle, CertDbRef) ->
 %% The end-entity certificate provided by the client MUST contain a
 %% key that is compatible with certificate_types.
 certificate_types(Version) when ?TLS_LTE(Version, ?TLS_1_2) ->
-    ECDSA = supported_cert_type_or_empty(ecdsa, ?ECDSA_SIGN),
     RSA = supported_cert_type_or_empty(rsa, ?RSA_SIGN),
-    DSS = supported_cert_type_or_empty(dss, ?DSS_SIGN),
-    <<ECDSA/binary,RSA/binary,DSS/binary>>.
+    DSA = supported_cert_type_or_empty(dss, ?DSS_SIGN),
+    ECDSA = supported_cert_type_or_empty(ecdsa, ?ECDSA_SIGN),
+    SM2 = supported_cert_type_or_empty(sm2, ?SM2_SIGN),
+    <<RSA/binary, DSA/binary, ECDSA/binary, SM2/binary>>.
 
 %% Returns encoded certificate_type if algorithm is supported
 supported_cert_type_or_empty(Algo, Type) ->
@@ -2371,7 +2374,9 @@ bad_key(#{algorithm := rsa_pss_pss}) ->
 bad_key(#{algorithm := eddsa}) ->
     unacceptable_eddsa_key;
 bad_key(#{algorithm := ecdsa}) ->
-    unacceptable_ecdsa_key.
+    unacceptable_ecdsa_key;
+bad_key(#{algorithm := sm2}) ->
+    unacceptable_sm2_key.
 
 cert_status_check(_,
                   #{stapling_state := #{configured := true,
@@ -3322,6 +3327,8 @@ decode_sign_alg(?TLS_1_2, SignSchemeList) ->
                                   {true,{Hash, rsa}};
                               {Hash, ecdsa, _} ->
                                   {true,{Hash, ecdsa}};
+                              {Hash, sm2, _} ->
+                                  {true,{Hash, sm2}};
                               _ ->
                                   false
                           end;
@@ -3525,6 +3532,7 @@ key_exchange_alg(Alg) when Alg == dhe_rsa; Alg == dhe_dss;
     ?KEY_EXCHANGE_DIFFIE_HELLMAN;
 key_exchange_alg(Alg) when Alg == ecdhe_rsa; Alg == ecdh_rsa;
 			   Alg == ecdhe_ecdsa; Alg == ecdh_ecdsa;
+			   Alg == ecdhe_sm2; Alg == ecdh_sm2;
 			   Alg == ecdh_anon ->
     ?KEY_EXCHANGE_EC_DIFFIE_HELLMAN;
 key_exchange_alg(psk) ->
@@ -3602,6 +3610,12 @@ filter_hashsigns_helper(KeyExchange, HashSigns, _Version)
   when KeyExchange == dhe_ecdsa;
        KeyExchange == ecdhe_ecdsa ->
     lists:keymember(ecdsa, 2, HashSigns);
+hash_and_sign_alg_exists(KeyExchange, HashSigns)
+  when KeyExchange == ecdh_sm2 ->
+    lists:keymember(sm2, 2, HashSigns);
+hash_and_sign_alg_exists(KeyExchange, HashSigns)
+  when KeyExchange == ecdhe_sm2 ->
+    lists:keymember(sm2, 2, HashSigns);
 filter_hashsigns_helper(KeyExchange, HashSigns, ?TLS_1_2) when KeyExchange == rsa;
 			   KeyExchange == dhe_rsa;
 			   KeyExchange == ecdhe_rsa;
@@ -3644,6 +3658,8 @@ filter_unavailable_ecc_suites(no_curve, Suites) ->
     ECCSuites = ssl_cipher:filter_suites(Suites,
                                          #{key_exchange_filters => [fun(ecdh_ecdsa) -> true;
                                                                        (ecdhe_ecdsa) -> true;
+                                                                       (ecdh_sm2) -> true;
+                                                                       (ecdhe_sm2) -> true;
                                                                        (ecdh_rsa) -> true;
                                                                        (_) -> false
                                                                     end],
@@ -3776,6 +3792,8 @@ is_supported_sign({Hash, Sign}, SignatureSchemes) ->
                                rsa;
                            ecdsa_sha1 ->
                                ecdsa;
+                           sm2_sm3 ->
+                               sm2;
                            S ->
                                S
                        end,
@@ -3810,7 +3828,9 @@ sign_type(rsa) ->
 sign_type(dsa) ->
     ?DSS_SIGN;
 sign_type(ecdsa) ->
-    ?ECDSA_SIGN.
+    ?ECDSA_SIGN;
+sign_type(sm2) ->
+    ?SM2_SIGN.
 
 server_name(_, _, server) ->
     undefined; %% Not interesting to check your own name.
@@ -3855,7 +3875,7 @@ handle_ecc_point_fmt_extension(_) ->
     #ec_point_formats{ec_point_format_list = [?ECPOINT_UNCOMPRESSED]}.
 
 advertises_ec_ciphers(ListKex) ->
-    KeyExchanges = [ecdh_ecdsa, ecdhe_ecdsa, ecdh_rsa, ecdhe_rsa, ecdh_anon],
+    KeyExchanges = [ecdh_ecdsa, ecdhe_ecdsa, ecdh_rsa, ecdhe_rsa, ecdh_anon, ecdh_sm2, ecdhe_sm2],
     F = fun (#{key_exchange := Kex}) -> lists:member(Kex, KeyExchanges);
             ({ecdhe_psk, _,_,_}) -> true
         end,
@@ -3975,6 +3995,7 @@ cert_curve(_, _, no_suite) ->
 cert_curve(Cert, ECCCurve0, CipherSuite) ->
     case ssl_cipher_format:suite_bin_to_map(CipherSuite) of
         #{key_exchange := Kex} when Kex == ecdh_ecdsa;
+                                    Kex == ecdh_sm2;
                                     Kex == ecdh_rsa ->
             OtpCert = public_key:pkix_decode_cert(Cert, otp),
             TBSCert = OtpCert#'OTPCertificate'.tbsCertificate,

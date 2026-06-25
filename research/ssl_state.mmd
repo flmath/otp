@@ -1,0 +1,43 @@
+stateDiagram-v2
+    direction TB
+
+    %% SSL/TLS Connection State Machine (Pre-TLS 1.3 simplified)
+    state TLS_Connection_Pre_1_3 {
+        [*] --> Initial : TCP Socket Connected
+        
+        Initial --> Hello : Send ClientHello/ServerHello
+        
+        Hello --> Abbreviated : Session Resumption
+        Hello --> Certify : Full Handshake
+        
+        Certify --> Cipher : Key Exchange & Cert Verification Complete
+        
+        Cipher --> Connection : ChangeCipherSpec & Finished Verified
+        Abbreviated --> Connection : ChangeCipherSpec & Finished Verified
+        
+        Connection --> Connection : Application Data Exchange
+        
+        Connection --> Downgrade : TLS Downgrade (Cleartext)
+        Connection --> Error : Alert/Protocol Error
+        
+        Downgrade --> [*]
+        Error --> [*]
+        Connection --> [*] : Close Notify
+    }
+
+    %% TLS 1.3 Connection State Machine
+    state TLS_1_3_Connection {
+        [*] --> Start : Handshake Init
+        
+        Start --> Negotiated : ClientHello / ServerHello + Extensions
+        
+        Negotiated --> WaitCert : Expecting Certificate
+        WaitCert --> WaitCV : Expecting CertificateVerify
+        
+        WaitCV --> WaitFinished : Signatures Verified
+        WaitFinished --> Connected : Handshake Finished MAC Verified
+        
+        Connected --> Connected : 1-RTT Application Data
+        
+        Connected --> [*] : Close Notify
+    }

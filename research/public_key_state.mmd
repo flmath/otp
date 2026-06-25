@@ -1,0 +1,25 @@
+stateDiagram-v2
+    direction TB
+
+    %% Logical State Machine for X.509 Path Validation
+    state PathValidation {
+        [*] --> Init : Provide Cert Chain & Trust Anchors
+        
+        Init --> ProcessCert : Pop Next Cert (from Root to Leaf)
+        
+        state ProcessCert {
+            CheckSignature --> CheckValidity : Valid Signature
+            CheckValidity --> CheckRevocation : Within NotBefore/NotAfter
+            CheckRevocation --> ProcessExtensions : Not Revoked
+            ProcessExtensions --> ExtensionsEvaluated
+        }
+        
+        ProcessCert --> PathInvalid : Validation Error (e.g., Expired, Revoked)
+        ProcessCert --> NextCert : Iteration (Next Cert in Chain)
+        NextCert --> ProcessCert
+        
+        ProcessCert --> PathValid : Reached Leaf & Valid
+        
+        PathInvalid --> [*]
+        PathValid --> [*]
+    }

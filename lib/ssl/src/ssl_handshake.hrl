@@ -38,6 +38,7 @@
 -define(RSA, 1).
 -define(DSA, 2).
 -define(ECDSA, 3).
+-define(SM2, 7).
 
 -record(session, {
                   session_id,
@@ -221,6 +222,7 @@
 -define(RSA_FIXED_DH, 3).
 -define(DSS_FIXED_DH, 4).
 -define(ECDSA_SIGN, 64).
+-define(SM2_SIGN, 65).
 -define(RSA_FIXED_ECDH, 65).
 -define(ECDSA_FIXED_ECDH, 66).
 

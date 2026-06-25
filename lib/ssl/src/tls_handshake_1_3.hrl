@@ -155,6 +155,7 @@
 %% EdDSA algorithms 
 -define(ED25519, 16#0807).
 -define(ED448, 16#0808).
+-define(SM2_SM3, 16#0708).
 
 %% RSASSA-PSS algorithms with public key OID RSASSA-PSS
 -define(RSA_PSS_PSS_SHA256, 16#0809).

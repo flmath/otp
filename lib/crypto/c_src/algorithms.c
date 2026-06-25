@@ -315,6 +315,10 @@ int init_curves(ErlNifEnv* env, int fips) {
     if (valid_curve(NID_secp256k1)) algo_curve[fips][cnt++] = enif_make_atom(env,"secp256k1"); 
 #else
 #endif
+#ifdef NID_sm2
+    if (valid_curve(NID_sm2)) algo_curve[fips][cnt++] = enif_make_atom(env,"sm2"); 
+#else
+#endif
 #ifdef NID_secp384r1
     if (valid_curve(NID_secp384r1)) algo_curve[fips][cnt++] = enif_make_atom(env,"secp384r1"); 
 #else

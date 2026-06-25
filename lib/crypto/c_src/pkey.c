@@ -88,6 +88,20 @@ static size_t size_of_RSA(EVP_PKEY *pkey);
 #endif
 
 struct pkey_type_t pkey_types[] = {
+    {
+        .name.atom_str = "ecdsa",
+        .evp_pkey_id = EVP_PKEY_EC,
+        .sign.alg_str = "ecdsa",
+    },
+    {
+        .name.atom_str = "sm2",
+#if defined(HAVE_EVP_PKEY_SM2) || defined(EVP_PKEY_SM2)
+        .evp_pkey_id = EVP_PKEY_SM2,
+#else
+        .evp_pkey_id = EVP_PKEY_EC,
+#endif
+        .sign.alg_str = "sm2",
+    },
 #ifdef HAVE_ML_DSA
     {
         .name.atom_str = "mldsa44",
@@ -225,6 +239,7 @@ static int check_pkey_algorithm_type(ErlNifEnv *env,
 
 #ifndef HAVE_EC
         (algorithm == atom_ecdsa) ||
+        (algorithm == atom_sm2) ||
 #endif
         0)
         assign_goto(*err_return, err,  EXCP_NOTSUP_N(env, alg_arg_num, "Unsupported algorithm"));
@@ -239,6 +254,7 @@ static int check_pkey_algorithm_type(ErlNifEnv *env,
         (algorithm != atom_rsa) &&
         (algorithm != atom_dss) &&
         (algorithm != atom_ecdsa) &&
+        (algorithm != atom_sm2) &&
         (algorithm != atom_eddsa)
         )
         assign_goto(*err_return, err, EXCP_BADARG_N(env, alg_arg_num, "Bad algorithm"));
@@ -505,7 +521,7 @@ static int get_pkey_private_key(ErlNifEnv *env,
         if (!get_rsa_private_key(env, argv[key_arg_num], pkey))
             assign_goto(*err_return, err, EXCP_BADARG_N(env, key_arg_num, "Couldn't get RSA private key"));
 
-    } else if (argv[algorithm_arg_num] == atom_ecdsa) {
+    } else if (argv[algorithm_arg_num] == atom_ecdsa || argv[algorithm_arg_num] == atom_sm2) {
 #if defined(HAVE_EC)
         if (!get_ec_private_key(env, argv[key_arg_num], pkey))
             assign_goto(*err_return, err, EXCP_BADARG_N(env, key_arg_num, "Couldn't get ECDSA private key"));
@@ -697,7 +713,7 @@ static int get_pkey_public_key(ErlNifEnv *env,
         if (!get_rsa_public_key(env, argv[key_arg_num], pkey))
             assign_goto(*err_return, err, EXCP_BADARG_N(env, key_arg_num, "Couldn't get RSA public key"));
 
-    } else if (argv[algorithm_arg_num] == atom_ecdsa) {
+    } else if (argv[algorithm_arg_num] == atom_ecdsa || argv[algorithm_arg_num] == atom_sm2) {
 #if defined(HAVE_EC)
         if (!get_ec_public_key(env, argv[key_arg_num], pkey))
             assign_goto(*err_return, err, EXCP_BADARG_N(env, key_arg_num, "Couldn't get ECDSA public key"));
@@ -941,7 +957,7 @@ ERL_NIF_TERM pkey_sign_nif(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 
             if (DSA_sign(md->type, tbs, len, sig_bin.data, &siglen, dsa) != 1)
                 assign_goto(ret, err, EXCP_ERROR(env, "Can't sign"));
-        } else if (argv[0] == atom_ecdsa) {
+        } else if (argv[0] == atom_ecdsa || argv[0] == atom_sm2) {
 # if defined(HAVE_EC)
             if ((ec = EVP_PKEY_get1_EC_KEY(pkey)) == NULL)
                 assign_goto(ret, err, EXCP_BADARG_N(env, 3, "Not an ECDSA private key"));
@@ -1136,7 +1152,7 @@ err:
             if ((dsa = EVP_PKEY_get1_DSA(pkey)) == NULL)
                 assign_goto(ret, err, EXCP_BADARG_N(env, 4, "Not an DSA public key"));
             result = DSA_verify(0, tbs, (int)tbslen, sig_bin.data, (int)sig_bin.size, dsa);
-        } else if (argv[0] == atom_ecdsa) {
+        } else if (argv[0] == atom_ecdsa || argv[0] == atom_sm2) {
 # if defined(HAVE_EC)
             if ((ec = EVP_PKEY_get1_EC_KEY(pkey)) == NULL)
                 assign_goto(ret, err, EXCP_BADARG_N(env, 4, "Not an ECDSA private key"));
@@ -1602,7 +1618,7 @@ ERL_NIF_TERM privkey_to_pubkey_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM 
         if (!dss_privkey_to_pubkey(env, pkey, &ret))
             assign_goto(ret, err, EXCP_BADARG_N(env, 1, "Couldn't get DSA public key from private key"));
 #endif
-    } else if (argv[0] == atom_ecdsa) {
+    } else if (argv[0] == atom_ecdsa || argv[0] == atom_sm2) {
 #if defined(HAVE_EC)
         /* not yet implemented
           EC_KEY *ec = EVP_PKEY_get1_EC_KEY(pkey);

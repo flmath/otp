@@ -600,6 +600,7 @@ signature_scheme(rsa_pss_pss_sha384) -> ?RSA_PSS_PSS_SHA384;
 signature_scheme(rsa_pss_pss_sha512) -> ?RSA_PSS_PSS_SHA512;
 signature_scheme(rsa_pkcs1_sha1) -> ?RSA_PKCS1_SHA1;
 signature_scheme(ecdsa_sha1) -> ?ECDSA_SHA1;
+signature_scheme(sm2_sm3) -> ?SM2_SM3;
 signature_scheme(mldsa44) -> ?MLDSA44;
 signature_scheme(mldsa65) -> ?MLDSA65;
 signature_scheme(mldsa87) -> ?MLDSA87;
@@ -654,6 +655,7 @@ signature_scheme(?RSA_PSS_PSS_SHA384) -> rsa_pss_pss_sha384;
 signature_scheme(?RSA_PSS_PSS_SHA512) -> rsa_pss_pss_sha512;
 signature_scheme(?RSA_PKCS1_SHA1) -> rsa_pkcs1_sha1;
 signature_scheme(?ECDSA_SHA1) -> ecdsa_sha1;
+signature_scheme(?SM2_SM3) -> sm2_sm3;
 signature_scheme(?MLDSA44) -> mldsa44;
 signature_scheme(?MLDSA65) -> mldsa65;
 signature_scheme(?MLDSA87) -> mldsa87;
@@ -739,6 +741,7 @@ scheme_to_components(rsa_pss_pss_sha384) -> {sha384, rsa_pss_pss, undefined};
 scheme_to_components(rsa_pss_pss_sha512) -> {sha512, rsa_pss_pss, undefined};
 scheme_to_components(rsa_pkcs1_sha1) -> {sha, rsa_pkcs1, undefined};
 scheme_to_components(ecdsa_sha1) -> {sha, ecdsa, undefined};
+scheme_to_components(sm2_sm3) -> {sm3, sm2, undefined};
 scheme_to_components(mldsa44) -> {none, mldsa44, undefined};
 scheme_to_components(mldsa65) -> {none, mldsa65, undefined};
 scheme_to_components(mldsa87) -> {none, mldsa87, undefined};
@@ -908,6 +911,8 @@ sign_algorithm(?ANON) -> anon;
 sign_algorithm(?RSA) -> rsa;
 sign_algorithm(?DSA) -> dsa;
 sign_algorithm(?ECDSA) -> ecdsa;
+sign_algorithm(sm2) -> ?SM2;
+sign_algorithm(?SM2) -> sm2;
 sign_algorithm(Other) when is_integer(Other), Other >= 4, Other =< 223 -> unassigned;
 sign_algorithm(Other) when is_integer(Other), Other >= 224, Other =< 255 -> Other.
 
@@ -1131,6 +1136,8 @@ filter_suites_signature(rsa, Ciphers, Version) ->
     (Ciphers -- ecdsa_signed_suites(Ciphers, Version)) -- dsa_signed_suites(Ciphers);
 filter_suites_signature(dsa, Ciphers, Version) ->
     (Ciphers -- ecdsa_signed_suites(Ciphers, Version)) -- rsa_signed_suites(Ciphers, Version);
+filter_suites_signature(sm2, Ciphers, Version) ->
+    (Ciphers -- ecdsa_signed_suites(Ciphers, Version)) -- rsa_signed_suites(Ciphers, Version);
 filter_suites_signature(ecdsa, Ciphers, Version) ->
     (Ciphers -- rsa_signed_suites(Ciphers, Version)) -- dsa_signed_suites(Ciphers).
 
@@ -1185,6 +1192,19 @@ ecdsa_signed(_) ->
 %% Cert should be signed by ECDSA
 ecdsa_signed_suites(Ciphers, Version) ->
     filter_kex(Ciphers, ecdsa_signed(Version)).
+
+sm2_signed(Version) when ?TLS_GTE(Version, ?TLS_1_2) ->
+    fun(ecdhe_sm2) -> true;
+       (_) -> false
+    end;
+sm2_signed(_) ->
+    fun(ecdhe_sm2) -> true;
+       (ecdh_sm2) -> true;
+       (_) -> false
+    end.
+
+sm2_signed_suites(Ciphers, Version) ->
+    filter_kex(Ciphers, sm2_signed(Version)).
 
 rsa_keyed(dhe_rsa) ->
     true;

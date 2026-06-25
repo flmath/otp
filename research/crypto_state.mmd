@@ -1,0 +1,22 @@
+stateDiagram-v2
+    direction LR
+
+    %% Application Lifecycle
+    state Application {
+        [*] --> Unloaded
+        Unloaded --> NIF_Init : Load crypto application
+        NIF_Init --> Loaded : NIFs ready
+        Loaded --> [*] : Unload application
+    }
+
+    %% Context Lifecycle (e.g., Cipher or Hash)
+    state ContextLifecycle {
+        [*] --> Uninitialized
+        Uninitialized --> ContextInit : crypto:crypto_init/crypto_hash_init
+        
+        ContextInit --> UpdateProcessing
+        UpdateProcessing --> UpdateProcessing : crypto:crypto_update/crypto_hash_update (feed data)
+        
+        UpdateProcessing --> Finalized : crypto:crypto_final/crypto_hash_final
+        Finalized --> [*] : Context destroyed/Garbage collected
+    }

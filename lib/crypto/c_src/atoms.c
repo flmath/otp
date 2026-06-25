@@ -95,6 +95,7 @@ ERL_NIF_TERM atom_aes_ccm;
 ERL_NIF_TERM atom_rsa;
 ERL_NIF_TERM atom_dss;
 ERL_NIF_TERM atom_ecdsa;
+ERL_NIF_TERM atom_sm2;
 
 #ifdef HAVE_X25519
 ERL_NIF_TERM atom_x25519;
@@ -236,6 +237,7 @@ int init_atoms(ErlNifEnv *env) {
     atom_rsa = enif_make_atom(env,"rsa");
     atom_dss = enif_make_atom(env,"dss");
     atom_ecdsa = enif_make_atom(env,"ecdsa");
+    atom_sm2 = enif_make_atom(env,"sm2");
 
 #ifdef HAVE_X25519
     atom_x25519 = enif_make_atom(env,"x25519");

@@ -99,6 +99,7 @@ extern ERL_NIF_TERM atom_aes_ccm;
 extern ERL_NIF_TERM atom_rsa;
 extern ERL_NIF_TERM atom_dss;
 extern ERL_NIF_TERM atom_ecdsa;
+extern ERL_NIF_TERM atom_sm2;
 
 #ifdef HAVE_X25519
 extern ERL_NIF_TERM atom_x25519;

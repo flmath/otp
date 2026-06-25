@@ -377,6 +377,7 @@ Signature algorithms.
 """.
 -type sign_algo()               :: eddsa
                                  | ecdsa
+                                 | sm2
                                  | rsa
                                  | legacy_sign_algo(). % exported
 
@@ -461,6 +462,7 @@ TLS-1.3.
                                  | rsa_pkcs1_sha384
                                  | rsa_pkcs1_sha256
                                  | ecdsa_sha1
+                                 | sm2_sm3
                                  | rsa_pkcs1_sha1.
 
 -doc(#{group => <<"Algorithms">>}).
@@ -471,6 +473,8 @@ configuration in TLS-1.3.
 """.
 -type kex_algo()                :: ecdhe_ecdsa
                                  | ecdh_ecdsa
+                                 | ecdhe_sm2
+                                 | ecdh_sm2
                                  | ecdh_rsa
                                  | rsa
                                  | dhe_rsa
@@ -3073,7 +3077,8 @@ Example:
  rsa_pss_rsae_sha256,rsa_pkcs1_sha512,rsa_pkcs1_sha384,rsa_pkcs1_sha256,
  {sha512,ecdsa},
  {sha384,ecdsa},
- {sha256,ecdsa}].
+ {sha256,ecdsa},
+ {sm3,sm2}].
 
 2> ssl:signature_algs(all, 'tlsv1.3').
 [mldsa87,mldsa65,mldsa44,slh_dsa_shake_256f,slh_dsa_shake_256s,
@@ -3088,6 +3093,7 @@ Example:
  {sha512,ecdsa},
  {sha384,ecdsa},
  {sha256,ecdsa},
+ {sm3,sm2},
  slh_dsa_shake_256f,slh_dsa_shake_256s,slh_dsa_sha2_256f,slh_dsa_sha2_256s,
  slh_dsa_shake_192f,slh_dsa_shake_192s,slh_dsa_sha2_192f,slh_dsa_sha2_192s,
  slh_dsa_shake_128f,slh_dsa_shake_128s,slh_dsa_sha2_128f,slh_dsa_sha2_128s,

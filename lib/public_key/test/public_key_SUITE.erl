@@ -157,6 +157,8 @@
          pkix_rsa_md2_oid/1,
          pkix_dsa_sha2_oid/0,
          pkix_dsa_sha2_oid/1,
+         pkix_sm_oid/0,
+         pkix_sm_oid/1,
          pkix_crl/0,
          pkix_crl/1,
          pkix_crl_verify_eddsa/0,
@@ -234,6 +236,7 @@ all() ->
      pkix_iso_dsa_oid,
      pkix_rsa_md2_oid,
      pkix_dsa_sha2_oid,
+     pkix_sm_oid,
      pkix_crl,
      pkix_crl_verify_eddsa,
      pkix_pss_params_in_signalg,
@@ -1880,6 +1883,12 @@ pkix_dsa_sha2_oid() ->
 pkix_dsa_sha2_oid(Config) when is_list(Config) ->
     {sha224, dsa} = public_key:pkix_sign_types(?'id-dsa-with-sha224'),
     {sha256, dsa} = public_key:pkix_sign_types(?'id-dsa-with-sha256').
+
+%%--------------------------------------------------------------------
+pkix_sm_oid() ->
+ [{doc, "Test support sm2_with_sm3 oid"}].
+pkix_sm_oid(Config) when is_list(Config) ->
+    {sm3, sm2} = public_key:pkix_sign_types(?'sm2-with-SM3').
 
 %%--------------------------------------------------------------------
 

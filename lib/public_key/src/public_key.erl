@@ -1535,6 +1535,8 @@ pkix_sign_types(?'ecdsa-with-SHA384') ->
     {sha384, ecdsa};
 pkix_sign_types(?'ecdsa-with-SHA512') ->
     {sha512, ecdsa};
+pkix_sign_types(?'sm2-with-SM3') ->
+    {sm3, sm2};
 pkix_sign_types(?'id-Ed25519') ->
     {none, eddsa};
 pkix_sign_types(?'id-Ed448') ->

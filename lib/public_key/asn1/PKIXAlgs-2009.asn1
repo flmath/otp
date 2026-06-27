@@ -560,4 +560,14 @@
     iso(1) identified-organization(3) oiw(14) secsig(3)
     algorithm(2) 26 }
 
+   -- Chinese Cryptographic Algorithms (GM/T)
+
+   sm2 OBJECT IDENTIFIER ::= { 1 2 156 10197 1 301 }
+
+   sm3 OBJECT IDENTIFIER ::= { 1 2 156 10197 1 401 }
+
+   sm2-with-SM3 OBJECT IDENTIFIER ::= { 1 2 156 10197 1 501 }
+
+   sm4 OBJECT IDENTIFIER ::= { 1 2 156 10197 1 104 }
+
    END

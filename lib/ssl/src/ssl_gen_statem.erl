@@ -171,6 +171,8 @@ init_statem([Role, Sup, Host, Port, Socket, {TLSOpts, EmOpts, Trackers}, User, C
             case TLSOpts of
                 #{versions := [?TLS_1_3]} ->
                     tls_client_connection_1_3:init([Role, Sender, Tab|InitArgs]);
+                #{versions := ['tlcpv1.1']} ->
+                    tlcp_client_connection:init([Role, Sender, Tab|InitArgs]);
                 _  ->
                     tls_client_connection:init([Role, Sender, Tab | InitArgs])
             end;
@@ -178,6 +180,8 @@ init_statem([Role, Sup, Host, Port, Socket, {TLSOpts, EmOpts, Trackers}, User, C
             case TLSOpts of
                 #{versions := [?TLS_1_3]} ->
                     tls_server_connection_1_3:init([Role, Sender, Tab|InitArgs]);
+                #{versions := ['tlcpv1.1']} ->
+                    tlcp_server_connection:init([Role, Sender, Tab|InitArgs]);
                 _ ->
                     tls_server_connection:init([Role, Sender, Tab|InitArgs])
             end

@@ -101,6 +101,8 @@ MODULES= \
 	tls_dtls_gen_connection \
 	tls_server_connection \
 	tls_client_connection \
+	tlcp_server_connection \
+	tlcp_client_connection \
 	tls_connection_sup \
 	tls_server_connection_1_3 \
 	tls_client_connection_1_3 \

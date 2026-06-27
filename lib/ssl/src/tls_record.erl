@@ -273,6 +273,8 @@ protocol_version_name('tlsv1.2') ->
     ?TLS_1_2;
 protocol_version_name('tlsv1.1') ->
     ?TLS_1_1;
+protocol_version_name('tlcpv1.1') ->
+    ?TLCP_1_1;
 protocol_version_name(tlsv1) ->
     ?TLS_1_0;
 protocol_version_name(sslv3) ->
@@ -293,6 +295,8 @@ protocol_version(?TLS_1_2) ->
     'tlsv1.2';
 protocol_version(?TLS_1_1) ->
     'tlsv1.1';
+protocol_version(?TLCP_1_1) ->
+    'tlcpv1.1';
 protocol_version(?TLS_1_0) ->
     tlsv1;
 protocol_version(?SSL_3_0) ->

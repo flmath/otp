@@ -184,6 +184,7 @@
 
 -define(TLS_1_3, {3,4}).
 -define(TLS_1_2, {3,3}).
+-define(TLCP_1_1, {1,1}).
 -define(TLS_1_1, {3,2}).
 -define(TLS_1_0, {3,1}).
 

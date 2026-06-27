@@ -3182,9 +3182,9 @@ sign_verify_compatibility(Algorithm0, Type0, _Digest) ->
 %%%
 %%% Only rsa works so far (although ecdsa | dss should do it)
 %%%================================================================
--doc "Algorithms for public key encrypt/decrypt. Only RSA is supported.".
+-doc "Algorithms for public key encrypt/decrypt. RSA and SM2 are supported.".
 -doc(#{group => <<"Public Key Ciphers">>}).
--type pk_encrypt_decrypt_algs() :: rsa .
+-type pk_encrypt_decrypt_algs() :: rsa | sm2.
 
 -doc(#{group => <<"Public Key Ciphers">>,equiv => rsa_padding()}).
 -type pk_encrypt_decrypt_opts() ::  [rsa_opt()] | rsa_compat_opts().
@@ -3242,7 +3242,7 @@ Uses the [3-tuple style](`m:crypto#error_3tup`) for error handling.
 -spec public_encrypt(Algorithm, PlainText, PublicKey, Options) ->
                             CipherText when Algorithm :: pk_encrypt_decrypt_algs(),
                                             PlainText :: binary(),
-                                            PublicKey :: rsa_public() | engine_key_ref(),
+                                            PublicKey :: rsa_public() | [ecdsa_public() | ecdsa_params()] | engine_key_ref(),
                                             Options :: pk_encrypt_decrypt_opts(),
                                             CipherText :: binary().
 public_encrypt(Algorithm, PlainText, PublicKey, Options) ->
@@ -3272,7 +3272,7 @@ Uses the [3-tuple style](`m:crypto#error_3tup`) for error handling.
 -spec private_decrypt(Algorithm, CipherText, PrivateKey, Options) ->
                              PlainText when Algorithm :: pk_encrypt_decrypt_algs(),
                                             CipherText :: binary(),
-                                            PrivateKey :: rsa_private() | engine_key_ref(),
+                                            PrivateKey :: rsa_private() | [ecdsa_private() | ecdsa_params()] | engine_key_ref(),
                                             Options :: pk_encrypt_decrypt_opts(),
                                             PlainText :: binary() .
 private_decrypt(Algorithm, CipherText, PrivateKey, Options) ->
@@ -3304,7 +3304,7 @@ Public-key decryption using the private key. See also `crypto:private_decrypt/4`
 -spec private_encrypt(Algorithm, PlainText, PrivateKey, Options) ->
                             CipherText when Algorithm :: pk_encrypt_decrypt_algs(),
                                             PlainText :: binary(),
-                                            PrivateKey :: rsa_private() | engine_key_ref(),
+                                            PrivateKey :: rsa_private() | [ecdsa_private() | ecdsa_params()] | engine_key_ref(),
                                             Options :: pk_encrypt_decrypt_opts(),
                                             CipherText :: binary().
 private_encrypt(Algorithm, PlainText, PrivateKey, Options) ->
@@ -3335,7 +3335,7 @@ Uses the [3-tuple style](`m:crypto#error_3tup`) for error handling.
 -spec public_decrypt(Algorithm, CipherText, PublicKey, Options) ->
                              PlainText when Algorithm :: pk_encrypt_decrypt_algs(),
                                             CipherText :: binary(),
-                                            PublicKey :: rsa_public() | engine_key_ref(),
+                                            PublicKey :: rsa_public() | [ecdsa_public() | ecdsa_params()] | engine_key_ref(),
                                             Options :: pk_encrypt_decrypt_opts(),
                                             PlainText :: binary() .
 public_decrypt(Algorithm, CipherText, PublicKey, Options) ->

@@ -1193,18 +1193,18 @@ ecdsa_signed(_) ->
 ecdsa_signed_suites(Ciphers, Version) ->
     filter_kex(Ciphers, ecdsa_signed(Version)).
 
-sm2_signed(Version) when ?TLS_GTE(Version, ?TLS_1_2) ->
-    fun(ecdhe_sm2) -> true;
-       (_) -> false
-    end;
-sm2_signed(_) ->
-    fun(ecdhe_sm2) -> true;
-       (ecdh_sm2) -> true;
-       (_) -> false
-    end.
-
-sm2_signed_suites(Ciphers, Version) ->
-    filter_kex(Ciphers, sm2_signed(Version)).
+%% sm2_signed(Version) when ?TLS_GTE(Version, ?TLS_1_2) ->
+%%     fun(ecdhe_sm2) -> true;
+%%        (_) -> false
+%%     end;
+%% sm2_signed(_) ->
+%%     fun(ecdhe_sm2) -> true;
+%%        (ecdh_sm2) -> true;
+%%        (_) -> false
+%%     end.
+%% 
+%% sm2_signed_suites(Ciphers, Version) ->
+%%     filter_kex(Ciphers, sm2_signed(Version)).
 
 rsa_keyed(dhe_rsa) ->
     true;

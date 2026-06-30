@@ -1797,8 +1797,6 @@ do_select_hashsign(HashSigns, PublicKeyAlgo, SupportedHashSigns) ->
                         is_acceptable_hash_sign(Scheme, SupportedHashSigns);
                     ecdsa when (PublicKeyAlgo == ecdsa) andalso (H == sha) ->
                         true;
-                    ecdsa when (PublicKeyAlgo == ecdsa)  ->
-                        ssl_cipher:is_fallback(Version);
                     sm2 when (PublicKeyAlgo == sm2) ->
                         true;
                     ecdsa when (PublicKeyAlgo == ecdsa)  ->
@@ -3610,10 +3608,10 @@ filter_hashsigns_helper(KeyExchange, HashSigns, _Version)
   when KeyExchange == dhe_ecdsa;
        KeyExchange == ecdhe_ecdsa ->
     lists:keymember(ecdsa, 2, HashSigns);
-hash_and_sign_alg_exists(KeyExchange, HashSigns)
+filter_hashsigns_helper(KeyExchange, HashSigns, _Version)
   when KeyExchange == ecdh_sm2 ->
     lists:keymember(sm2, 2, HashSigns);
-hash_and_sign_alg_exists(KeyExchange, HashSigns)
+filter_hashsigns_helper(KeyExchange, HashSigns, _Version)
   when KeyExchange == ecdhe_sm2 ->
     lists:keymember(sm2, 2, HashSigns);
 filter_hashsigns_helper(KeyExchange, HashSigns, ?TLS_1_2) when KeyExchange == rsa;

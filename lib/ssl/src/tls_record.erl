@@ -30,6 +30,7 @@
 
 -include("tls_record.hrl").
 -include("ssl_internal.hrl").
+-include("gmssl_internal.hrl").
 -include("ssl_alert.hrl").
 -include("tls_handshake.hrl").
 -include("ssl_cipher.hrl").
@@ -414,6 +415,8 @@ sufficient_crypto_support('tlsv1.3') ->
      are_algorithms_supported(crypto:supports(curves), [secp256r1]) andalso
      are_algorithms_supported(crypto:supports(rsa_opts),
                               [rsa_pkcs1_padding, rsa_pkcs1_pss_padding]));
+sufficient_crypto_support('tlcpv1.1') ->
+    gmssl_record:sufficient_crypto_support('tlcpv1.1');
 sufficient_crypto_support(Version) ->
     sufficient_crypto_support(protocol_version(Version)).
 
@@ -426,16 +429,20 @@ are_algorithms_supported(CryptoSupport, Algorithms) ->
 is_acceptable_version(Version)
   when ?TLS_1_X(Version) ->
     true;
+is_acceptable_version(?TLCP_1_1) ->
+    true;
 is_acceptable_version(_) ->
     false.
 
 -spec is_acceptable_version(tls_version(), Supported :: [tls_version()]) -> boolean().
 is_acceptable_version(Version, Versions) ->
-    ?TLS_1_X(Version) andalso lists:member(Version, Versions).
+    is_acceptable_version(Version) andalso lists:member(Version, Versions).
 
 -spec hello_version([tls_version()]) -> tls_version().
 hello_version([Highest|_]) when ?TLS_GTE(Highest, ?TLS_1_2) ->
     ?TLS_1_2;
+hello_version([?TLCP_1_1|_]) ->
+    ?TLCP_1_1;
 hello_version(Versions) ->
     lowest_protocol_version(Versions).
 

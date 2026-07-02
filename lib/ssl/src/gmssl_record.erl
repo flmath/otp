@@ -5,7 +5,7 @@
 -export([protocol_version/1, protocol_version_name/1, lowest_protocol_version/1, lowest_protocol_version/2,
 	 highest_protocol_version/1, highest_protocol_version/2,
 	 is_higher/2, supported_protocol_versions/0,
-	 is_acceptable_version/2, hello_version/2]).
+	 is_acceptable_version/2, hello_version/2, sufficient_crypto_support/1]).
 
 -export_type([gmssl_atom_version/0]).
 
@@ -17,7 +17,9 @@ protocol_version_name('tlcpv1.1') ->
     ?TLCP_1_1.
 
 protocol_version(?TLCP_1_1) ->
-    'tlcpv1.1'.
+    'tlcpv1.1';
+protocol_version('tlcpv1.1') ->
+    ?TLCP_1_1.
 
 lowest_protocol_version(Version1, Version2) when Version1 < Version2 ->
     Version1;
@@ -51,3 +53,6 @@ check_protocol_version([Version], _F) ->
     Version;
 check_protocol_version([Version | Versions], F) ->
     F(Version, check_protocol_version(Versions, F)).
+
+sufficient_crypto_support(_) ->
+    true.

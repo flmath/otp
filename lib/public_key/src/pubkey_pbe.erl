@@ -56,6 +56,9 @@ encode(Data, Password, "DES-EDE3-CBC" = Cipher, KeyDevParams) ->
 encode(Data, Password, "RC2-CBC" = Cipher, KeyDevParams) ->
     {Key, IV} = password_to_key_and_iv(Password, Cipher, KeyDevParams),
     crypto:crypto_one_time(rc2_cbc, Key, IV,  pbe_pad(Data, block_size(rc2_cbc)), true);
+encode(Data, Password, "SM4-CBC" = Cipher, KeyDevParams) ->
+    {Key, IV} = password_to_key_and_iv(Password, Cipher, KeyDevParams),
+    crypto:crypto_one_time(sm4_cbc, Key, IV, pbe_pad(Data, block_size(sm4_cbc)), true);
 encode(Data, Password, "AES-128-CBC" = Cipher, KeyDevParams) ->
     {Key, IV} = password_to_key_and_iv(Password, Cipher, KeyDevParams),
     crypto:crypto_one_time(aes_128_cbc, Key, IV,  pbe_pad(Data, block_size(aes_128_cbc)), true);
@@ -80,6 +83,9 @@ decode(Data, Password,"DES-EDE3-CBC" = Cipher, KeyDevParams) ->
 decode(Data, Password,"RC2-CBC"= Cipher, KeyDevParams) ->
     {Key, IV} = password_to_key_and_iv(Password, Cipher, KeyDevParams),
     crypto:crypto_one_time(rc2_cbc, Key, IV, Data, false);
+decode(Data, Password,"SM4-CBC"= Cipher, KeyDevParams) ->
+    {Key, IV} = password_to_key_and_iv(Password, Cipher, KeyDevParams),
+    crypto:crypto_one_time(sm4_cbc, Key, IV, Data, false);
 decode(Data, Password,"AES-128-CBC"= Cipher, KeyDevParams) ->
     {Key, IV} = password_to_key_and_iv(Password, Cipher, KeyDevParams),
     crypto:crypto_one_time(aes_128_cbc, Key, IV, Data, false);
@@ -294,6 +300,7 @@ derived_key_length(Cipher,_) when Cipher == ?'des-EDE3-CBC';
     24;
 
 derived_key_length(Cipher,_) when (Cipher == "AES-128-CBC");
+                                  (Cipher == "SM4-CBC");
                                   (Cipher == ?'id-aes128-CBC') ->
     16;
 derived_key_length(Cipher,_) when (Cipher == "AES-192-CBC");
@@ -310,9 +317,12 @@ block_size(Cipher) when Cipher == rc2_cbc;
     8;
 block_size(Cipher) when Cipher == aes_128_cbc;
                         Cipher == aes_192_cbc;
-			Cipher == aes_256_cbc ->
+			Cipher == aes_256_cbc;
+                        Cipher == sm4_cbc ->
     16.
 
+cipher(#'PBES2-params_encryptionScheme'{algorithm = {1,2,156,10197,1,104,2}}) ->
+    "SM4-CBC";
 cipher(#'PBES2-params_encryptionScheme'{algorithm = ?'id-aes128-CBC'}) ->
     "AES-128-CBC";
 cipher(#'PBES2-params_encryptionScheme'{algorithm = ?'id-aes192-CBC'}) ->

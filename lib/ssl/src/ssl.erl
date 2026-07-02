@@ -54,6 +54,7 @@ Special Erlang node configuration for the application can be found in
 -include_lib("kernel/include/logger.hrl").
 
 -include("ssl_internal.hrl").
+-include("gmssl_internal.hrl").
 -include("ssl_api.hrl").
 -include("ssl_record.hrl").
 -include("ssl_cipher.hrl").
@@ -3788,6 +3789,8 @@ str_to_suite(CipherSuiteName) ->
 -doc false.
 tls_version(Version) when ?TLS_1_X(Version) ->
     Version;
+tls_version(?TLCP_1_1) ->
+    ?TLCP_1_1;
 tls_version(Version) when ?DTLS_1_X(Version) ->
     dtls_v1:corresponding_tls_version(Version).
 

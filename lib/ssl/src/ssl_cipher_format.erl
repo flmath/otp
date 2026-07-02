@@ -29,6 +29,7 @@
 -moduledoc false.
 
 -include("ssl_api.hrl").
+-include("gmssl_internal.hrl").
 -include("ssl_cipher.hrl").
 -include("ssl_internal.hrl").
 -include_lib("public_key/include/public_key.hrl").
@@ -1019,6 +1020,8 @@ suite_bin_to_map(?TLS_AES_128_CCM_8_SHA256) ->
        cipher => aes_128_ccm_8,
        mac => aead,
        prf => sha256};
+suite_bin_to_map(Bin) when Bin =:= ?ECC_SM4_SM3 orelse Bin =:= ?ECDHE_SM4_SM3 ->
+    gmssl_cipher:suite_bin_to_map(Bin);
 suite_bin_to_map(Bin) ->
     case gmssl_cipher:suite_bin_to_map(Bin) of
         error -> erlang:error(function_clause, [Bin]);
@@ -1775,6 +1778,8 @@ suite_map_to_bin(#{key_exchange := any,
       mac := aead,
       prf := sha256}) ->
     ?TLS_AES_128_CCM_8_SHA256;
+suite_map_to_bin(#{cipher := sm4_cbc} = Map) ->
+    gmssl_cipher:suite_map_to_bin(Map);
 suite_map_to_bin(Map) ->
     case gmssl_cipher:suite_map_to_bin(Map) of
         error -> erlang:error(function_clause, [Map]);

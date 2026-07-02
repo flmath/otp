@@ -395,6 +395,8 @@ next_protocol(SelectedProtocol) ->
 %%
 %% Description: Handles a certificate handshake message
 %%--------------------------------------------------------------------
+certify(Certs, CertDbHandle, CertDbRef, SSlOptions, CRLDbHandle, Role, Host, ?TLCP_1_1 = Version, ExtInfo) ->
+    gmssl_certificate:certify(Certs, CertDbHandle, CertDbRef, SSlOptions, CRLDbHandle, Role, Host, Version, ExtInfo);
 certify(Certs, CertDbHandle, CertDbRef,
         #{partial_chain := PartialChain} = SSlOptions,
         CRLDbHandle, Role, Host, Version, ExtInfo) ->

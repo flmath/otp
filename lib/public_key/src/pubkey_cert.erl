@@ -2058,7 +2058,9 @@ ecdsa_digest_oid(sha512) ->
 ecdsa_digest_oid(sha384) ->
     ?'ecdsa-with-SHA384';
 ecdsa_digest_oid(sha256) ->
-    ?'ecdsa-with-SHA256'.
+    ?'ecdsa-with-SHA256';
+ecdsa_digest_oid(sm3) ->
+    ?'sm2withSM3'.
 
 config(Role, Root, Key, Opts) ->
    cert_chain(Role, Root, Key, Opts).

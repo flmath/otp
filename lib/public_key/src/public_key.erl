@@ -1535,6 +1535,8 @@ pkix_sign_types(?'ecdsa-with-SHA384') ->
     {sha384, ecdsa};
 pkix_sign_types(?'ecdsa-with-SHA512') ->
     {sha512, ecdsa};
+pkix_sign_types(?'sm2withSM3') ->
+    {sm3, sm2};
 pkix_sign_types(?'id-Ed25519') ->
     {none, eddsa};
 pkix_sign_types(?'id-Ed448') ->
@@ -2734,6 +2736,9 @@ format_sign_key(#'ECPrivateKey'{privateKey = PrivKey, parameters = {namedCurve, 
   when (Curve == ?'id-Ed25519') orelse (Curve == ?'id-Ed448')->
     ECCurve = ec_curve_spec(Param),
     {eddsa, [PrivKey, ECCurve]};
+format_sign_key(#'ECPrivateKey'{privateKey = PrivKey, parameters = {namedCurve, ?'sm2p256v1'} = Param}) ->
+    ECCurve = ec_curve_spec(Param),
+    {sm2, [PrivKey, ECCurve]};
 format_sign_key(#'ECPrivateKey'{privateKey = PrivKey, parameters = Param}) ->
     ECCurve = ec_curve_spec(Param),
     {ecdsa, [PrivKey, ECCurve]};
@@ -2754,6 +2759,9 @@ format_verify_key({#'ECPoint'{point = Point}, {namedCurve, Curve} = Param}) when
                                                                                  (Curve == ?'id-Ed448') ->
     ECCurve = ec_curve_spec(Param),
     {eddsa, [Point, ECCurve]};
+format_verify_key({#'ECPoint'{point = Point}, {namedCurve, ?'sm2p256v1'} = Param}) ->
+    ECCurve = ec_curve_spec(Param),
+    {sm2, [Point, ECCurve]};
 format_verify_key({#'ECPoint'{point = Point}, Param}) ->
     ECCurve = ec_curve_spec(Param),
     {ecdsa, [Point, ECCurve]};

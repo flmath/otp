@@ -4525,6 +4525,8 @@ format_pkey(rsa, Key) ->
     map_ensure_int_as_bin(Key);
 format_pkey(ecdsa, [Key, Curve]) ->
     {nif_curve_params(Curve), ensure_int_as_bin(Key)};
+format_pkey(sm2, [Key, Curve]) ->
+    {nif_curve_params(Curve), ensure_int_as_bin(Key)};
 format_pkey(eddsa, [PubKey, Curve]) when  Curve == ed25519;
                                           Curve == ed448 ->
     [ensure_int_as_bin(PubKey), Curve];

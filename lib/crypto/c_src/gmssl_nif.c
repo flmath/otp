@@ -121,8 +121,14 @@ static ERL_NIF_TERM pkey_sign_nif_stub(ErlNifEnv* env, int argc, const ERL_NIF_T
         return enif_raise_exception(env, enif_make_atom(env, "notsup"));
     }
     
-    if (!enif_inspect_iolist_as_binary(env, argv[2], &data) ||
-        !enif_inspect_iolist_as_binary(env, argv[3], &key_bin)) {
+    if (!enif_inspect_iolist_as_binary(env, argv[2], &data)) {
+        return enif_make_badarg(env);
+    }
+    
+    int arity;
+    const ERL_NIF_TERM *tuple;
+    if (!enif_get_tuple(env, argv[3], &arity, &tuple) || arity != 2 ||
+        !enif_inspect_iolist_as_binary(env, tuple[1], &key_bin)) {
         return enif_make_badarg(env);
     }
     
@@ -160,7 +166,7 @@ static ERL_NIF_TERM pkey_sign_nif_stub(ErlNifEnv* env, int argc, const ERL_NIF_T
 }
 static ERL_NIF_TERM pkey_sign_heavy_nif_stub(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) { return enif_raise_exception(env, enif_make_atom(env, "notsup")); }
 static ERL_NIF_TERM pkey_verify_nif_stub(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
-    ErlNifBinary data, sig, pub_bin;
+    ErlNifBinary data, sig_bin, key_bin;
     
     if (!enif_is_identical(argv[0], enif_make_atom(env, "sm2"))) {
         return enif_raise_exception(env, enif_make_atom(env, "notsup"));
@@ -171,18 +177,24 @@ static ERL_NIF_TERM pkey_verify_nif_stub(ErlNifEnv* env, int argc, const ERL_NIF
     }
     
     if (!enif_inspect_iolist_as_binary(env, argv[2], &data) ||
-        !enif_inspect_iolist_as_binary(env, argv[3], &sig) ||
-        !enif_inspect_iolist_as_binary(env, argv[4], &pub_bin)) {
+        !enif_inspect_iolist_as_binary(env, argv[3], &sig_bin)) {
         return enif_make_badarg(env);
     }
     
-    if (pub_bin.size != 65 || pub_bin.data[0] != 0x04) {
+    int arity;
+    const ERL_NIF_TERM *tuple;
+    if (!enif_get_tuple(env, argv[4], &arity, &tuple) || arity != 2 ||
+        !enif_inspect_iolist_as_binary(env, tuple[1], &key_bin)) {
+        return enif_make_badarg(env);
+    }
+    
+    if (key_bin.size != 65 || key_bin.data[0] != 0x04) {
         return enif_raise_exception(env, enif_make_atom(env, "error"));
     }
     
     SM2_KEY sm2_key;
     SM2_Z256_POINT pub;
-    if (sm2_z256_point_from_octets(&pub, pub_bin.data, pub_bin.size) != 1) {
+    if (sm2_z256_point_from_octets(&pub, key_bin.data, key_bin.size) != 1) {
         return enif_raise_exception(env, enif_make_atom(env, "error"));
     }
     sm2_key_set_public_key(&sm2_key, &pub);
@@ -196,7 +208,7 @@ static ERL_NIF_TERM pkey_verify_nif_stub(ErlNifEnv* env, int argc, const ERL_NIF
         return enif_make_atom(env, "false");
     }
     
-    if (sm2_verify_finish(&ctx, sig.data, sig.size) != 1) {
+    if (sm2_verify_finish(&ctx, sig_bin.data, sig_bin.size) != 1) {
         return enif_make_atom(env, "false");
     }
     
@@ -218,10 +230,16 @@ static ERL_NIF_TERM srp_host_secret_nif_stub(ErlNifEnv* env, int argc, const ERL
 static int is_sm2_curve(ErlNifEnv* env, ERL_NIF_TERM term) {
     int arity;
     const ERL_NIF_TERM *tuple;
+    ERL_NIF_TERM curve_name;
+    
     if (enif_get_tuple(env, term, &arity, &tuple) && arity == 2) {
-        return enif_is_identical(tuple[1], enif_make_atom(env, "sm2"));
+        curve_name = tuple[1];
+    } else {
+        curve_name = term;
     }
-    return enif_is_identical(term, enif_make_atom(env, "sm2"));
+    
+    return enif_is_identical(curve_name, enif_make_atom(env, "sm2")) ||
+           enif_is_identical(curve_name, enif_make_atom(env, "sm2p256v1"));
 }
 
 static ERL_NIF_TERM ec_generate_key_nif_stub(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {

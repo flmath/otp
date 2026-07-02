@@ -90,20 +90,20 @@ test_gmssl_sm2(_Config) ->
     Data = <<"Sign me up for SM2!">>,
     
     %% Sign
-    Sig = crypto:sign(sm2, sm3, Data, Priv),
+    Sig = crypto:sign(sm2, sm3, Data, [Priv, sm2]),
     
     %% Verify
-    true = crypto:verify(sm2, sm3, Data, Sig, Pub),
+    true = crypto:verify(sm2, sm3, Data, Sig, [Pub, sm2]),
     
     %% Verify fails on bad data
-    false = crypto:verify(sm2, sm3, <<"Bad data">>, Sig, Pub),
+    false = crypto:verify(sm2, sm3, <<"Bad data">>, Sig, [Pub, sm2]),
     
     %% Generate a fresh SM2 keypair
     {NewPub, NewPriv} = crypto:generate_key(ecdh, sm2),
     
     %% Sign and verify with the new keypair
-    NewSig = crypto:sign(sm2, sm3, Data, NewPriv),
-    true = crypto:verify(sm2, sm3, Data, NewSig, NewPub),
+    NewSig = crypto:sign(sm2, sm3, Data, [NewPriv, sm2]),
+    true = crypto:verify(sm2, sm3, Data, NewSig, [NewPub, sm2]),
     
     %% Compute shared secret using ECDH
     {AlicePub, AlicePriv} = crypto:generate_key(ecdh, sm2),

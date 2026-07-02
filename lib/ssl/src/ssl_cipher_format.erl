@@ -1018,7 +1018,12 @@ suite_bin_to_map(?TLS_AES_128_CCM_8_SHA256) ->
      #{key_exchange => any,
        cipher => aes_128_ccm_8,
        mac => aead,
-       prf => sha256}.
+       prf => sha256};
+suite_bin_to_map(Bin) ->
+    case gmssl_cipher:suite_bin_to_map(Bin) of
+        error -> erlang:error(function_clause, [Bin]);
+        Map -> Map
+    end.
 
 %%--------------------------------------------------------------------
 -spec suite_legacy(cipher_suite() | internal_erl_cipher_suite()) -> old_erl_cipher_suite().
@@ -1769,7 +1774,12 @@ suite_map_to_bin(#{key_exchange := any,
       cipher := aes_128_ccm_8,
       mac := aead,
       prf := sha256}) ->
-    ?TLS_AES_128_CCM_8_SHA256.
+    ?TLS_AES_128_CCM_8_SHA256;
+suite_map_to_bin(Map) ->
+    case gmssl_cipher:suite_map_to_bin(Map) of
+        error -> erlang:error(function_clause, [Map]);
+        Bin -> Bin
+    end.
 
 
 tls_1_3_suite_str_to_map(CipherStr) ->

@@ -298,7 +298,7 @@ Identifies a TLS session prior to TLS-1.3.
 -doc """
 TLS or DTLS protocol version.
 """.
--type protocol_version()         :: tls_version() | dtls_version(). % exported
+-type protocol_version()         :: tls_version() | dtls_version() | 'tlcpv1.1'. % exported
 
 -doc(#{group => <<"Socket">>}).
 -doc """
@@ -730,7 +730,7 @@ Options common to both client and server side.
   connections, `...link` is added to receiver and cannot be changed.
 """.
 
--type common_option()        :: {protocol, tls | dtls} |
+-type common_option()        :: {protocol, tls | dtls | tlcp} |
                                 {handshake,  hello | full} |
                                 {ciphers, cipher_suites()} |
                                 {signature_algs, signature_algs()} |
@@ -2931,7 +2931,10 @@ cipher_suites(Description, Version) when Version == 'tlsv1.3';
     do_cipher_suites(Description, tls_record:protocol_version_name(Version));
 cipher_suites(Description, Version)  when Version == 'dtlsv1.2';
                                           Version == 'dtlsv1'->
-    do_cipher_suites(Description, dtls_record:protocol_version_name(Version)).
+    do_cipher_suites(Description, dtls_record:protocol_version_name(Version));
+cipher_suites(Description, Version) when Version == 'tlcpv1.1' ->
+    %% TLCP delegates to gmssl_record
+    do_cipher_suites(Description, gmssl_record:protocol_version_name(Version)).
 
 %%--------------------------------------------------------------------
 -doc """
@@ -2955,7 +2958,9 @@ cipher_suites(Description, Version, StringType) when  Version == 'tlsv1.3';
     do_cipher_suites(Description, tls_record:protocol_version_name(Version), StringType);
 cipher_suites(Description, Version, StringType)  when Version == 'dtlsv1.2';
                                                       Version == 'dtlsv1'->
-    do_cipher_suites(Description, dtls_record:protocol_version_name(Version), StringType).
+    do_cipher_suites(Description, dtls_record:protocol_version_name(Version), StringType);
+cipher_suites(Description, Version, StringType) when Version == 'tlcpv1.1' ->
+    do_cipher_suites(Description, gmssl_record:protocol_version_name(Version), StringType).
 
 %%--------------------------------------------------------------------
 

@@ -34,6 +34,7 @@
 -include("ssl_cipher.hrl").
 -include("ssl_handshake.hrl").
 -include("ssl_alert.hrl").
+-include("gmssl_internal.hrl").
 -include("tls_handshake_1_3.hrl").
 -include_lib("public_key/include/public_key.hrl").
 
@@ -326,7 +327,9 @@ block_decipher(Fun, #cipher_state{key=Key, iv=IV} = CipherState0,
 suites(Version) when ?TLS_1_X(Version) ->
     tls_v1:suites(Version);
 suites(Version) when ?DTLS_1_X(Version) ->
-    dtls_v1:suites(Version).
+    dtls_v1:suites(Version);
+suites(?TLCP_1_1) ->
+    gmssl_cipher:suites('tlcpv1.1').
 
 all_suites(?TLS_1_3 = Version) ->
     suites(Version) ++ tls_v1:aes_ccm_8_suites(Version) ++
@@ -338,6 +341,8 @@ all_suites(?TLS_1_1 = Version) ->
     suites(Version) ++ tls_legacy_suites(Version) ++ tls_v1:cbc_suites(Version);
 all_suites(?TLS_1_0 = Version) ->
     suites(Version) ++ tls_legacy_suites(Version) ++ tls_v1:cbc_suites(Version);
+all_suites(?TLCP_1_1) ->
+    gmssl_cipher:suites('tlcpv1.1');
 all_suites(Version) ->
     dtls_v1:all_suites(Version).
 
@@ -360,6 +365,8 @@ tls_legacy_suites(Version) ->
 anonymous_suites(Version) when ?TLS_1_X(Version) ->
     Versions = versions_included(Version),
     lists:flatmap(fun tls_v1:exclusive_anonymous_suites/1, Versions);
+anonymous_suites(?TLCP_1_1) ->
+    [];
 anonymous_suites(Version) when ?DTLS_1_X(Version) ->
     dtls_v1:anonymous_suites(Version).
 

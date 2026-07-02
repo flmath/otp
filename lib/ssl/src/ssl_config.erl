@@ -614,7 +614,7 @@ process_options(UserSslOpts, SslOpts0, Env) ->
     SslOpts.
 
 opt_protocol_versions(UserOpts, Opts, Env) ->
-    {_, PRC} = get_opt_of(protocol, [tls, dtls], tls, UserOpts, Opts),
+    {_, PRC} = get_opt_of(protocol, [tls, dtls, tlcp], tls, UserOpts, Opts),
 
     LogLevels = [none, all, emergency, alert, critical, error,
                  warning, notice, info, debug],
@@ -655,7 +655,22 @@ default_versions(tls) ->
     lists:sort(fun tls_record:is_higher/2, Vsns0);
 default_versions(dtls) ->
     Vsns0 = dtls_record:supported_protocol_versions(),
-    lists:sort(fun dtls_record:is_higher/2, Vsns0).
+    lists:sort(fun dtls_record:is_higher/2, Vsns0);
+default_versions(tlcp) ->
+    Vsns0 = gmssl_record:supported_protocol_versions(),
+    lists:sort(fun gmssl_record:is_higher/2, Vsns0).
+
+validate_versions(tlcp, Vsns0) ->
+    Validate =
+        fun(Version) ->
+                try gmssl_record:protocol_version_name(Version) of
+                    _ -> gmssl_record:protocol_version_name(Version)
+                catch error:function_clause ->
+                        option_error(Version, {versions, Vsns0})
+                end
+        end,
+    Vsns = [Validate(V) || V <- Vsns0],
+    lists:sort(fun gmssl_record:is_higher/2, Vsns);
 
 validate_versions(tls, Vsns0) ->
     Validate =
@@ -2112,6 +2127,8 @@ session_cb_opts(server = Role) ->
     end.
 
 connection_cb(tls) ->
+    tls_gen_connection;
+connection_cb(tlcp) ->
     tls_gen_connection;
 connection_cb(dtls) ->
     dtls_gen_connection.

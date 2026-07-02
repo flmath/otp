@@ -16,7 +16,8 @@ static ERL_NIF_TERM hash_algorithms_stub(ErlNifEnv* env, int argc, const ERL_NIF
 static ERL_NIF_TERM pubkey_algorithms_stub(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) { return enif_raise_exception(env, enif_make_atom(env, "notsup")); }
 static ERL_NIF_TERM cipher_algorithms_stub(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
     ERL_NIF_TERM sm4_cbc = enif_make_atom(env, "sm4_cbc");
-    return enif_make_list(env, 1, sm4_cbc);
+    ERL_NIF_TERM sm4_gcm = enif_make_atom(env, "sm4_gcm");
+    return enif_make_list(env, 2, sm4_cbc, sm4_gcm);
 }
 static ERL_NIF_TERM mac_algorithms_stub(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) { return enif_raise_exception(env, enif_make_atom(env, "notsup")); }
 static ERL_NIF_TERM curve_algorithms_stub(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) { return enif_raise_exception(env, enif_make_atom(env, "notsup")); }
@@ -64,6 +65,25 @@ static ERL_NIF_TERM cipher_info_nif_stub(ErlNifEnv* env, int argc, const ERL_NIF
         vals[4] = enif_make_atom(env, "undefined");
         keys[5] = enif_make_atom(env, "prop_aead");
         vals[5] = enif_make_atom(env, "false");
+        
+        if (enif_make_map_from_arrays(env, keys, vals, 6, &map)) {
+            return map;
+        }
+    } else if (enif_is_identical(argv[0], enif_make_atom(env, "sm4_gcm"))) {
+        ERL_NIF_TERM keys[6], vals[6];
+        ERL_NIF_TERM map;
+        keys[0] = enif_make_atom(env, "key_length");
+        vals[0] = enif_make_int(env, 16);
+        keys[1] = enif_make_atom(env, "iv_length");
+        vals[1] = enif_make_int(env, 12);
+        keys[2] = enif_make_atom(env, "block_size");
+        vals[2] = enif_make_int(env, 1);
+        keys[3] = enif_make_atom(env, "mode");
+        vals[3] = enif_make_atom(env, "gcm");
+        keys[4] = enif_make_atom(env, "type");
+        vals[4] = enif_make_atom(env, "undefined");
+        keys[5] = enif_make_atom(env, "prop_aead");
+        vals[5] = enif_make_atom(env, "true");
         
         if (enif_make_map_from_arrays(env, keys, vals, 6, &map)) {
             return map;
@@ -345,7 +365,77 @@ static ERL_NIF_TERM ecdh_compute_key_nif_stub(ErlNifEnv* env, int argc, const ER
     return ret;
 }
 static ERL_NIF_TERM rand_seed_nif_stub(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) { return enif_raise_exception(env, enif_make_atom(env, "notsup")); }
-static ERL_NIF_TERM aead_cipher_nif_stub(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) { return enif_raise_exception(env, enif_make_atom(env, "notsup")); }
+static ERL_NIF_TERM aead_cipher_nif_stub(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
+    ErlNifBinary key, iv, in, aad, tag;
+    unsigned int tag_len;
+    int encflg;
+    SM4_KEY sm4_key;
+    ErlNifBinary out_bin;
+    
+    if (argc != 7) {
+        return enif_raise_exception(env, enif_make_atom(env, "notsup"));
+    }
+    
+    if (!enif_is_identical(argv[0], enif_make_atom(env, "sm4_gcm"))) {
+        return enif_raise_exception(env, enif_make_atom(env, "notsup"));
+    }
+    
+    if (argv[6] == enif_make_atom(env, "true")) {
+        encflg = 1;
+    } else if (argv[6] == enif_make_atom(env, "false")) {
+        encflg = 0;
+    } else {
+        return enif_make_badarg(env);
+    }
+    
+    if (!enif_inspect_iolist_as_binary(env, argv[1], &key) ||
+        !enif_inspect_iolist_as_binary(env, argv[2], &iv) ||
+        !enif_inspect_iolist_as_binary(env, argv[3], &in) ||
+        !enif_inspect_iolist_as_binary(env, argv[4], &aad)) {
+        return enif_make_badarg(env);
+    }
+    
+    if (encflg) {
+        if (!enif_get_uint(env, argv[5], &tag_len)) return enif_make_badarg(env);
+    } else {
+        if (!enif_inspect_iolist_as_binary(env, argv[5], &tag)) return enif_make_badarg(env);
+        tag_len = tag.size;
+    }
+    
+    if (key.size != 16) {
+        return enif_make_badarg(env);
+    }
+    
+    sm4_set_encrypt_key(&sm4_key, key.data);
+    
+    if (!enif_alloc_binary(in.size, &out_bin)) {
+        return enif_raise_exception(env, enif_make_atom(env, "error"));
+    }
+    
+    if (encflg) {
+        ErlNifBinary tag_bin;
+        if (!enif_alloc_binary(tag_len, &tag_bin)) {
+            enif_release_binary(&out_bin);
+            return enif_raise_exception(env, enif_make_atom(env, "error"));
+        }
+        
+        if (sm4_gcm_encrypt(&sm4_key, iv.data, iv.size, aad.data, aad.size, in.data, in.size, out_bin.data, tag_len, tag_bin.data) != 1) {
+            enif_release_binary(&out_bin);
+            enif_release_binary(&tag_bin);
+            return enif_raise_exception(env, enif_make_atom(env, "error"));
+        }
+        
+        return enif_make_tuple2(env, enif_make_binary(env, &out_bin), enif_make_binary(env, &tag_bin));
+    } else {
+        sm4_set_encrypt_key(&sm4_key, key.data);
+        if (sm4_gcm_decrypt(&sm4_key, iv.data, iv.size, aad.data, aad.size, in.data, in.size, tag.data, tag_len, out_bin.data) != 1) {
+            enif_release_binary(&out_bin);
+            return enif_make_atom(env, "error");
+        }
+        
+        return enif_make_binary(env, &out_bin);
+    }
+}
 static ERL_NIF_TERM aead_cipher_init_nif_stub(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) { return enif_raise_exception(env, enif_make_atom(env, "notsup")); }
 static ERL_NIF_TERM engine_by_id_nif_stub(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) { return enif_raise_exception(env, enif_make_atom(env, "notsup")); }
 static ERL_NIF_TERM engine_init_nif_stub(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) { return enif_raise_exception(env, enif_make_atom(env, "notsup")); }

@@ -267,7 +267,9 @@ protocol_version_name(tlsv1) ->
 protocol_version_name(sslv3) ->
     ?SSL_3_0;
 protocol_version_name(sslv2) -> %% Backwards compatibility
-    ?SSL_2_0.
+    ?SSL_2_0;
+protocol_version_name(V) ->
+    gmssl_record:protocol_version_name(V).
 
 %%--------------------------------------------------------------------
 -spec protocol_version(tls_version()) -> tls_atom_version().
@@ -285,7 +287,9 @@ protocol_version(?TLS_1_1) ->
 protocol_version(?TLS_1_0) ->
     tlsv1;
 protocol_version(?SSL_3_0) ->
-    sslv3.
+    sslv3;
+protocol_version(V) ->
+    gmssl_record:protocol_version(V).
 %%--------------------------------------------------------------------
 -spec lowest_protocol_version(tls_version(), tls_version()) -> tls_version().
 %%     

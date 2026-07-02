@@ -240,6 +240,8 @@ reusable_options(_,_) ->
 
 record_cb(tls) ->
     tls_record;
+record_cb(tlcp) ->
+    gmssl_record;
 record_cb(dtls) ->
     dtls_record.
 

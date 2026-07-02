@@ -38,6 +38,7 @@
 -include("ssl_cipher.hrl").
 -include("ssl_alert.hrl").
 -include("ssl_internal.hrl").
+-include("gmssl_internal.hrl").
 -include("ssl_srp.hrl").
 -include("tls_handshake_1_3.hrl").
 -include_lib("public_key/include/public_key.hrl").
@@ -2512,9 +2513,13 @@ encrypted_premaster_secret(Secret, RSAPublicKey) ->
 
 -spec calc_certificate_verify(ssl_record:ssl_version(), md5sha | ssl:hash(), _, [binary()]) ->
           binary().
+calc_certificate_verify(?TLCP_1_1, HashAlgo, _MasterSecret, Handshake) ->
+    gmssl_handshake:certificate_verify(HashAlgo, lists:reverse(Handshake));
 calc_certificate_verify(Version, HashAlgo, _MasterSecret, Handshake) when ?TLS_1_X(Version) ->
     tls_v1:certificate_verify(HashAlgo, lists:reverse(Handshake)).
 
+calc_finished(?TLCP_1_1, Role, PrfAlgo, MasterSecret, Handshake) ->
+    gmssl_handshake:finished(Role, PrfAlgo, MasterSecret, lists:reverse(Handshake));
 calc_finished(Version, Role, PrfAlgo, MasterSecret, Handshake) when ?TLS_1_X(Version) ->
     tls_v1:finished(Role, Version, PrfAlgo, MasterSecret, lists:reverse(Handshake)).
 
@@ -2546,7 +2551,14 @@ master_secret(Version, MasterSecret,
 setup_keys(Version, PrfAlgo, MasterSecret,
 	   ServerRandom, ClientRandom, HashSize, KML, IVS) when ?TLS_1_X(Version)->
     tls_v1:setup_keys(Version, PrfAlgo, MasterSecret, ServerRandom, ClientRandom, HashSize,
+                      KML, IVS);
+setup_keys(?TLCP_1_1 = Version, PrfAlgo, MasterSecret,
+	   ServerRandom, ClientRandom, HashSize, KML, IVS) ->
+    gmssl_handshake:setup_keys(Version, PrfAlgo, MasterSecret, ServerRandom, ClientRandom, HashSize,
                       KML, IVS).
+calc_master_secret(?TLCP_1_1, _PrfAlgo, PremasterSecret, ClientRandom, ServerRandom) ->
+    {ok, MS} = gmssl_handshake:master_secret(?TLCP_1_1, PremasterSecret, ClientRandom, ServerRandom),
+    MS;
 calc_master_secret(Version, PrfAlgo, PremasterSecret, ClientRandom, ServerRandom)
   when ?TLS_LT(Version, ?TLS_1_3) ->
     tls_v1:master_secret(PrfAlgo, PremasterSecret, ClientRandom, ServerRandom).
@@ -3538,6 +3550,10 @@ key_exchange_alg(rsa_psk) ->
 key_exchange_alg(Alg)
   when Alg == srp_rsa; Alg == srp_dss; Alg == srp_anon ->
     ?KEY_EXCHANGE_SRP;
+key_exchange_alg(sm2) ->
+    ?KEY_EXCHANGE_EC_DIFFIE_HELLMAN;
+key_exchange_alg(sm2_dhe) ->
+    ?KEY_EXCHANGE_EC_DIFFIE_HELLMAN;
 key_exchange_alg(_) ->
     ?NULL.
 

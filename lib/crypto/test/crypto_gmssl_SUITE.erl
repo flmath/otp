@@ -98,4 +98,11 @@ test_gmssl_sm2(_Config) ->
     %% Verify fails on bad data
     false = crypto:verify(sm2, sm3, <<"Bad data">>, Sig, Pub),
     
+    %% Generate a fresh SM2 keypair
+    {NewPub, NewPriv} = crypto:generate_key(ecdh, sm2),
+    
+    %% Sign and verify with the new keypair
+    NewSig = crypto:sign(sm2, sm3, Data, NewPriv),
+    true = crypto:verify(sm2, sm3, Data, NewSig, NewPub),
+    
     ok.

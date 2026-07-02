@@ -4140,7 +4140,11 @@ on_load() ->
                           " mode without application 'crypto' being loaded"})
     end,
 
-    LibBaseName = "crypto",
+    UseGmSSL = application:get_env(crypto, gmssl_mode, false),
+    LibBaseName = case UseGmSSL of
+        true -> "gmssl_crypto";
+        false -> "crypto"
+    end,
     PrivDir = code:priv_dir(crypto),
     LibName = case erlang:system_info(build_type) of
 		  opt ->

@@ -118,12 +118,15 @@ CRYPTO_OBJS = $(OBJDIR)/crypto$(TYPEMARKER).o \
 	$(OBJDIR)/hash_equals$(TYPEMARKER).o \
 	$(OBJDIR)/pbkdf2_hmac$(TYPEMARKER).o
 
+GMSSL_OBJS = $(OBJDIR)/gmssl_nif$(TYPEMARKER).o
+
 CALLBACK_OBJS = $(OBJDIR)/crypto_callback$(TYPEMARKER).o
 CRYPTO_STATIC_OBJS = $(patsubst $(OBJDIR)/%$(TYPEMARKER).o,$(OBJDIR)/%_static$(TYPEMARKER).o,$(CRYPTO_OBJS) $(CALLBACK_OBJS))
 
 NIF_ARCHIVE = $(LIBDIR)/crypto$(TYPEMARKER).a
 
 NIF_LIB = $(LIBDIR)/crypto$(TYPEMARKER).@DED_EXT@
+GMSSL_LIB = $(LIBDIR)/gmssl_crypto$(TYPEMARKER).@DED_EXT@
 CALLBACK_LIB = $(LIBDIR)/crypto_callback$(TYPEMARKER).@DED_EXT@
 
 DISABLE_OTP_TEST_ENGINE = @DISABLE_OTP_TEST_ENGINE@
@@ -188,7 +191,7 @@ ALL_STATIC_CFLAGS = @DED_STATIC_CFLAGS@ $(TYPE_EXTRA_CFLAGS) @SSL_FLAGS@ $(CONFI
 
 _create_dirs := $(shell mkdir -p $(OBJDIR) $(LIBDIR))
 
-debug opt valgrind asan: $(NIF_LIB) $(CALLBACK_LIB) $(TEST_ENGINE_LIB)
+debug opt valgrind asan: $(NIF_LIB) $(GMSSL_LIB) $(CALLBACK_LIB) $(TEST_ENGINE_LIB)
 
 static_lib: $(NIF_ARCHIVE)
 
@@ -230,6 +233,10 @@ $(LIBDIR)/crypto$(TYPEMARKER).so: $(CRYPTO_OBJS)
 	$(V_at)$(INSTALL_DIR) $(LIBDIR)
 	$(V_LD) $(LDFLAGS) -o $@ $^ $(LDLIBS) $(CRYPTO_LINK_LIB) $(SSL_EXTRA_LIBS)
 
+$(LIBDIR)/gmssl_crypto$(TYPEMARKER).so: $(GMSSL_OBJS)
+	$(V_at)$(INSTALL_DIR) $(LIBDIR)
+	$(V_LD) $(LDFLAGS) -o $@ $^ $(LDLIBS) -lgmssl
+
 $(OBJDIR)/%_static$(TYPEMARKER).o: %.c
 	$(V_at)$(INSTALL_DIR) $(OBJDIR)
 	$(V_CC) -c -o $@ $(ALL_STATIC_CFLAGS) $<
@@ -253,10 +260,10 @@ $(LIBDIR)/crypto_callback$(TYPEMARKER).dll: $(CALLBACK_OBJS)
 endif
 
 
-CLEAN_OBJS_RAW = $(CRYPTO_OBJS) $(CALLBACK_OBJS) $(CRYPTO_STATIC_OBJS) $(TEST_ENGINE_OBJS)
+CLEAN_OBJS_RAW = $(CRYPTO_OBJS) $(GMSSL_OBJS) $(CALLBACK_OBJS) $(CRYPTO_STATIC_OBJS) $(TEST_ENGINE_OBJS)
 CLEAN_OBJS_O = $(patsubst %.debug.o,%.o,$(CLEAN_OBJS_RAW:.valgrind.o=.o))
 
-CLEAN_LIBS_RAW = $(NIF_LIB) $(CALLBACK_LIB) $(TEST_ENGINE_LIB)
+CLEAN_LIBS_RAW = $(NIF_LIB) $(GMSSL_LIB) $(CALLBACK_LIB) $(TEST_ENGINE_LIB)
 CLEAN_LIBS_SO = $(patsubst %.debug.@DED_EXT@,%.@DED_EXT@,$(CLEAN_LIBS_RAW:.valgrind.@DED_EXT@=.@DED_EXT@))
 
 clean_dynamic_libs:
@@ -280,6 +287,7 @@ include $(ERL_TOP)/make/otp_release_targets.mk
 release_spec: opt
 	$(INSTALL_DIR) "$(RELSYSDIR)/priv/lib"
 	$(INSTALL_PROGRAM) $(NIF_LIB) "$(RELSYSDIR)/priv/lib"
+	$(INSTALL_PROGRAM) $(GMSSL_LIB) "$(RELSYSDIR)/priv/lib"
 ifeq ($(DYNAMIC_OR_WIN_CRYPTO_LIB),yes)
 	$(INSTALL_PROGRAM) $(CALLBACK_LIB) "$(RELSYSDIR)/priv/lib"
 endif

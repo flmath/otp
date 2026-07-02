@@ -6,7 +6,7 @@ suite() ->
     [{timetrap, {minutes, 1}}].
 
 all() ->
-    [test_legacy_openssl, test_gmssl_sm3, test_gmssl_sm4].
+    [test_legacy_openssl, test_gmssl_sm3, test_gmssl_sm4, test_gmssl_sm2].
 
 init_per_suite(Config) ->
     %% Ensure crypto is started
@@ -77,4 +77,25 @@ test_gmssl_sm4(_Config) ->
     Decrypted = crypto:crypto_one_time(sm4_cbc, Key, IV, Ciphertext, false),
     
     Data = Decrypted,
+    ok.
+
+test_gmssl_sm2(_Config) ->
+    application:set_env(crypto, gmssl_mode, true),
+    code:purge(crypto),
+    code:load_file(crypto),
+
+    Priv = <<188, 80, 88, 253, 107, 229, 238, 185, 122, 174, 180, 24, 127, 93, 81, 35, 189, 241, 209, 179, 38, 142, 138, 132, 80, 72, 92, 143, 79, 143, 30, 69>>,
+    Pub = <<4, 152, 194, 37, 44, 212, 173, 35, 30, 75, 3, 141, 161, 110, 222, 67, 242, 156, 133, 146, 55, 254, 87, 90, 210, 179, 122, 107, 104, 163, 9, 94, 190, 60, 107, 90, 169, 248, 207, 181, 210, 45, 73, 137, 127, 76, 42, 89, 242, 255, 181, 45, 144, 195, 19, 199, 36, 16, 183, 23, 68, 204, 49, 167, 130>>,
+    
+    Data = <<"Sign me up for SM2!">>,
+    
+    %% Sign
+    Sig = crypto:sign(sm2, sm3, Data, Priv),
+    
+    %% Verify
+    true = crypto:verify(sm2, sm3, Data, Sig, Pub),
+    
+    %% Verify fails on bad data
+    false = crypto:verify(sm2, sm3, <<"Bad data">>, Sig, Pub),
+    
     ok.

@@ -1,6 +1,8 @@
 #include <erl_nif.h>
 #include <gmssl/sm3.h>
 #include <gmssl/sm4.h>
+#include <gmssl/sm2.h>
+#include <gmssl/sm2_z256.h>
 
 static int load(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info) { return 0; }
 static int upgrade(ErlNifEnv* env, void** priv_data, void** old_priv_data, ERL_NIF_TERM load_info) { return 0; }
@@ -108,9 +110,98 @@ static ERL_NIF_TERM mod_exp_nif_stub(ErlNifEnv* env, int argc, const ERL_NIF_TER
 static ERL_NIF_TERM do_exor_stub(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) { return enif_raise_exception(env, enif_make_atom(env, "notsup")); }
 static ERL_NIF_TERM hash_equals_nif_stub(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) { return enif_raise_exception(env, enif_make_atom(env, "notsup")); }
 static ERL_NIF_TERM pbkdf2_hmac_nif_stub(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) { return enif_raise_exception(env, enif_make_atom(env, "notsup")); }
-static ERL_NIF_TERM pkey_sign_nif_stub(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) { return enif_raise_exception(env, enif_make_atom(env, "notsup")); }
+static ERL_NIF_TERM pkey_sign_nif_stub(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
+    ErlNifBinary data, key_bin;
+    
+    if (!enif_is_identical(argv[0], enif_make_atom(env, "sm2"))) {
+        return enif_raise_exception(env, enif_make_atom(env, "notsup"));
+    }
+    
+    if (!enif_is_identical(argv[1], enif_make_atom(env, "sm3"))) {
+        return enif_raise_exception(env, enif_make_atom(env, "notsup"));
+    }
+    
+    if (!enif_inspect_iolist_as_binary(env, argv[2], &data) ||
+        !enif_inspect_iolist_as_binary(env, argv[3], &key_bin)) {
+        return enif_make_badarg(env);
+    }
+    
+    if (key_bin.size != 32) {
+        return enif_raise_exception(env, enif_make_atom(env, "error"));
+    }
+    
+    SM2_KEY sm2_key;
+    sm2_z256_t priv;
+    sm2_z256_from_bytes(priv, key_bin.data);
+    sm2_key_set_private_key(&sm2_key, priv);
+    
+    SM2_SIGN_CTX ctx;
+    if (sm2_sign_init(&ctx, &sm2_key, SM2_DEFAULT_ID, SM2_DEFAULT_ID_LENGTH) != 1) {
+        return enif_raise_exception(env, enif_make_atom(env, "error"));
+    }
+    
+    if (sm2_sign_update(&ctx, data.data, data.size) != 1) {
+        return enif_raise_exception(env, enif_make_atom(env, "error"));
+    }
+    
+    uint8_t sig[SM2_MAX_SIGNATURE_SIZE];
+    size_t siglen = sizeof(sig);
+    if (sm2_sign_finish(&ctx, sig, &siglen) != 1) {
+        return enif_raise_exception(env, enif_make_atom(env, "error"));
+    }
+    
+    ErlNifBinary out_bin;
+    if (!enif_alloc_binary(siglen, &out_bin)) {
+        return enif_raise_exception(env, enif_make_atom(env, "error"));
+    }
+    memcpy(out_bin.data, sig, siglen);
+    
+    return enif_make_binary(env, &out_bin);
+}
 static ERL_NIF_TERM pkey_sign_heavy_nif_stub(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) { return enif_raise_exception(env, enif_make_atom(env, "notsup")); }
-static ERL_NIF_TERM pkey_verify_nif_stub(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) { return enif_raise_exception(env, enif_make_atom(env, "notsup")); }
+static ERL_NIF_TERM pkey_verify_nif_stub(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
+    ErlNifBinary data, sig, pub_bin;
+    
+    if (!enif_is_identical(argv[0], enif_make_atom(env, "sm2"))) {
+        return enif_raise_exception(env, enif_make_atom(env, "notsup"));
+    }
+    
+    if (!enif_is_identical(argv[1], enif_make_atom(env, "sm3"))) {
+        return enif_raise_exception(env, enif_make_atom(env, "notsup"));
+    }
+    
+    if (!enif_inspect_iolist_as_binary(env, argv[2], &data) ||
+        !enif_inspect_iolist_as_binary(env, argv[3], &sig) ||
+        !enif_inspect_iolist_as_binary(env, argv[4], &pub_bin)) {
+        return enif_make_badarg(env);
+    }
+    
+    if (pub_bin.size != 65 || pub_bin.data[0] != 0x04) {
+        return enif_raise_exception(env, enif_make_atom(env, "error"));
+    }
+    
+    SM2_KEY sm2_key;
+    SM2_Z256_POINT pub;
+    if (sm2_z256_point_from_octets(&pub, pub_bin.data, pub_bin.size) != 1) {
+        return enif_raise_exception(env, enif_make_atom(env, "error"));
+    }
+    sm2_key_set_public_key(&sm2_key, &pub);
+    
+    SM2_VERIFY_CTX ctx;
+    if (sm2_verify_init(&ctx, &sm2_key, SM2_DEFAULT_ID, SM2_DEFAULT_ID_LENGTH) != 1) {
+        return enif_make_atom(env, "false");
+    }
+    
+    if (sm2_verify_update(&ctx, data.data, data.size) != 1) {
+        return enif_make_atom(env, "false");
+    }
+    
+    if (sm2_verify_finish(&ctx, sig.data, sig.size) != 1) {
+        return enif_make_atom(env, "false");
+    }
+    
+    return enif_make_atom(env, "true");
+}
 static ERL_NIF_TERM pkey_crypt_nif_stub(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) { return enif_raise_exception(env, enif_make_atom(env, "notsup")); }
 static ERL_NIF_TERM encapsulate_key_nif_stub(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) { return enif_raise_exception(env, enif_make_atom(env, "notsup")); }
 static ERL_NIF_TERM decapsulate_key_nif_stub(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) { return enif_raise_exception(env, enif_make_atom(env, "notsup")); }

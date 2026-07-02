@@ -84,7 +84,8 @@
     sa-ecdsaWithSHA224 |
     sa-ecdsaWithSHA256 |
     sa-ecdsaWithSHA384 |
-    sa-ecdsaWithSHA512
+    sa-ecdsaWithSHA512 |
+    sa-sm2withSM3
    }
 
    --
@@ -276,7 +277,8 @@
    { ID secp224r1 } | { ID sect233k1 } | { ID sect233r1 } |
    { ID secp256r1 } | { ID sect283k1 } | { ID sect283r1 } |
    { ID secp384r1 } | { ID sect409k1 } | { ID sect409r1 } |
-   { ID secp521r1 } | { ID sect571k1 } | { ID sect571r1 },
+   { ID secp521r1 } | { ID sect571k1 } | { ID sect571r1 } |
+   { ID sm2p256v1 },
    ... -- Extensible
    }
 
@@ -338,6 +340,9 @@
 
    sect571r1 OBJECT IDENTIFIER ::= {
     iso(1) identified-organization(3) certicom(132) curve(0) 39 }
+
+   sm2p256v1 OBJECT IDENTIFIER ::= {
+    iso(1) member-body(2) cn(156) oscca(10197) algorithms(1) curve(301) }
 
    -- RSA with MD-2
 
@@ -498,6 +503,28 @@
    ecdsa-with-SHA512 OBJECT IDENTIFIER ::= {
     iso(1) member-body(2) us(840) ansi-X9-62(10045) signatures(4)
     ecdsa-with-SHA2(3) 4 }
+
+   -- SM2 with SM3
+
+   id-sm3 OBJECT IDENTIFIER ::= {
+    iso(1) member-body(2) cn(156) oscca(10197) algorithms(1) hash(401) }
+
+   mda-sm3 DIGEST-ALGORITHM ::= {
+    IDENTIFIER id-sm3
+    PARAMS TYPE NULL ARE preferredAbsent
+   }
+
+   sa-sm2withSM3 SIGNATURE-ALGORITHM ::= {
+    IDENTIFIER sm2withSM3
+    VALUE ECDSA-Sig-Value
+    PARAMS TYPE NULL ARE absent
+    HASHES { mda-sm3 }
+    PUBLIC-KEYS { pk-ec }
+    SMIME-CAPS { IDENTIFIED BY sm2withSM3 }
+   }
+
+   sm2withSM3 OBJECT IDENTIFIER ::= {
+    iso(1) member-body(2) cn(156) oscca(10197) algorithms(1) signature(501) }
 
    --
    -- Signature Values

@@ -105,4 +105,13 @@ test_gmssl_sm2(_Config) ->
     NewSig = crypto:sign(sm2, sm3, Data, NewPriv),
     true = crypto:verify(sm2, sm3, Data, NewSig, NewPub),
     
+    %% Compute shared secret using ECDH
+    {AlicePub, AlicePriv} = crypto:generate_key(ecdh, sm2),
+    {BobPub, BobPriv} = crypto:generate_key(ecdh, sm2),
+    
+    AliceSecret = crypto:compute_key(ecdh, BobPub, AlicePriv, sm2),
+    BobSecret = crypto:compute_key(ecdh, AlicePub, BobPriv, sm2),
+    
+    AliceSecret = BobSecret,
+    
     ok.

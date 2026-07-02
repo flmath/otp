@@ -215,20 +215,17 @@ static ERL_NIF_TERM privkey_to_pubkey_nif_stub(ErlNifEnv* env, int argc, const E
 static ERL_NIF_TERM srp_value_B_nif_stub(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) { return enif_raise_exception(env, enif_make_atom(env, "notsup")); }
 static ERL_NIF_TERM srp_user_secret_nif_stub(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) { return enif_raise_exception(env, enif_make_atom(env, "notsup")); }
 static ERL_NIF_TERM srp_host_secret_nif_stub(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) { return enif_raise_exception(env, enif_make_atom(env, "notsup")); }
-static ERL_NIF_TERM ec_generate_key_nif_stub(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
+static int is_sm2_curve(ErlNifEnv* env, ERL_NIF_TERM term) {
     int arity;
     const ERL_NIF_TERM *tuple;
-    int is_sm2 = 0;
-    
-    if (enif_get_tuple(env, argv[0], &arity, &tuple) && arity == 2) {
-        if (enif_is_identical(tuple[1], enif_make_atom(env, "sm2"))) {
-            is_sm2 = 1;
-        }
-    } else if (enif_is_identical(argv[0], enif_make_atom(env, "sm2"))) {
-        is_sm2 = 1;
+    if (enif_get_tuple(env, term, &arity, &tuple) && arity == 2) {
+        return enif_is_identical(tuple[1], enif_make_atom(env, "sm2"));
     }
-    
-    if (!is_sm2) {
+    return enif_is_identical(term, enif_make_atom(env, "sm2"));
+}
+
+static ERL_NIF_TERM ec_generate_key_nif_stub(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
+    if (!is_sm2_curve(env, argv[0])) {
         return enif_raise_exception(env, enif_make_atom(env, "notsup"));
     }
     
@@ -259,7 +256,39 @@ static ERL_NIF_TERM ec_generate_key_nif_stub(ErlNifEnv* env, int argc, const ERL
     
     return enif_make_tuple2(env, pub_term, priv_term);
 }
-static ERL_NIF_TERM ecdh_compute_key_nif_stub(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) { return enif_raise_exception(env, enif_make_atom(env, "notsup")); }
+static ERL_NIF_TERM ecdh_compute_key_nif_stub(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
+    if (!is_sm2_curve(env, argv[1])) {
+        return enif_raise_exception(env, enif_make_atom(env, "notsup"));
+    }
+    
+    ErlNifBinary pub_bin, priv_bin;
+    if (!enif_inspect_iolist_as_binary(env, argv[0], &pub_bin) ||
+        !enif_inspect_iolist_as_binary(env, argv[2], &priv_bin)) {
+        return enif_make_badarg(env);
+    }
+    
+    if (pub_bin.size != 65 || pub_bin.data[0] != 0x04) {
+        return enif_raise_exception(env, enif_make_atom(env, "error"));
+    }
+    
+    if (priv_bin.size != 32) {
+        return enif_raise_exception(env, enif_make_atom(env, "error"));
+    }
+    
+    SM2_KEY my_key;
+    sm2_z256_t priv;
+    sm2_z256_from_bytes(priv, priv_bin.data);
+    sm2_key_set_private_key(&my_key, priv);
+    
+    uint8_t out[32];
+    if (sm2_ecdh(&my_key, pub_bin.data, out) != 1) {
+        return enif_raise_exception(env, enif_make_atom(env, "error"));
+    }
+    
+    ERL_NIF_TERM ret;
+    memcpy(enif_make_new_binary(env, 32, &ret), out, 32);
+    return ret;
+}
 static ERL_NIF_TERM rand_seed_nif_stub(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) { return enif_raise_exception(env, enif_make_atom(env, "notsup")); }
 static ERL_NIF_TERM aead_cipher_nif_stub(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) { return enif_raise_exception(env, enif_make_atom(env, "notsup")); }
 static ERL_NIF_TERM aead_cipher_init_nif_stub(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) { return enif_raise_exception(env, enif_make_atom(env, "notsup")); }

@@ -462,6 +462,7 @@ gen_state(StateName, Type, Event, State) ->
     catch throw:#alert{} = Alert ->
             ssl_gen_statem:handle_own_alert(Alert, StateName, State);
           _:Reason:ST ->
+            io:format("CRASH: ~p, ~p~n", [Reason, ST]),
             ?SSL_LOG(info, unexpected_error, [{error, Reason}, {stacktrace, ST}]),
 	    ssl_gen_statem:handle_own_alert(?ALERT_REC(?FATAL, ?INTERNAL_ERROR,
 						       unexpected_error),

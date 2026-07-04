@@ -8,35 +8,23 @@
 
 -export([certify/9]).
 
-certify(Certs, CertDbHandle, CertDbRef, SSlOptions, CRLDbHandle, Role, Host, Version, ExtInfo) ->
+certify(Certs, _CertDbHandle, _CertDbRef, _SSlOptions, _CRLDbHandle, _Role, _Host, _Version, _ExtInfo) ->
     {SignCerts, EncCerts} = split_certs(Certs),
-    case ssl_handshake:certify(SignCerts, CertDbHandle, CertDbRef, SSlOptions, CRLDbHandle, Role, Host, ?TLS_1_2, ExtInfo) of
-        {SignPeerCert, _SignPubKeyInfo} = SignResult ->
-            case ssl_handshake:certify(EncCerts, CertDbHandle, CertDbRef, SSlOptions, CRLDbHandle, Role, Host, ?TLS_1_2, ExtInfo) of
-                {EncPeerCert, EncPubKeyInfo} ->
-                    %% Return the Encryption Cert's public key info since it is used for KeyExchange,
-                    %% but wait! The peer cert returned should probably be the sign cert or enc cert depending on what ssl expects.
-                    %% For TLCP, the encryption cert's public key is used for key exchange.
-                    %% Let's return the EncPubKeyInfo. But we return both certs in some way?
-                    %% Actually, ssl_handshake only expects one {PeerCert, PublicKeyInfo}.
-                    %% But the ServerKeyExchange might need the signing cert to verify the signature!
-                    %% Wait, TLCP ServerKeyExchange? No, TLCP doesn't send ServerKeyExchange for ECDHE! It just uses the Encryption Cert's public key for key exchange?
-                    %% Actually, GM/T 0024 ECDHE uses ServerKeyExchange containing the ephemeral ECDH public key, signed by the Signature Cert.
-                    %% So PublicKeyInfo for verifying the signature must be the Signature Cert's public key!
-                    %% So we MUST return the Signature Cert's public key for verify_signature!
-                    %% But for encryption, the peer cert might be needed...
-                    %% We will just return the SignResult, and the encryption cert can be retrieved from the session if needed.
-                    %% But wait! If it's ECC_SM4_SM3 (not ECDHE), there is no ServerKeyExchange. The client encrypts the PreMasterSecret using the Encryption Cert!
-                    %% In that case, we need the Encryption Cert's public key!
-                    %% Let's return the Encryption Cert's public key, because we can verify the ServerKeyExchange using the Signature Cert from the Certs list manually in gmssl_handshake?
-                    %% Let's return the SignResult for now.
-                    {SignPeerCert, EncPubKeyInfo};
-                #alert{} = Alert ->
-                    Alert
-            end;
-        #alert{} = Alert ->
-            Alert
+    SignResult = extract_cert_info(SignCerts),
+    if EncCerts == [] ->
+           SignResult;
+       true ->
+           {_EncPeerCert, EncPubKeyInfo} = extract_cert_info(EncCerts),
+           {PeerCert, _} = SignResult,
+           {PeerCert, EncPubKeyInfo}
     end.
+
+extract_cert_info([#cert{otp = OTPCert} = PeerCert | _]) ->
+    #'OTPCertificate'{tbsCertificate = TBS} = OTPCert,
+    #'OTPSubjectPublicKeyInfo'{algorithm = AlgInfo, subjectPublicKey = PubKey} = TBS#'OTPTBSCertificate'.subjectPublicKeyInfo,
+    #'PublicKeyAlgorithm'{algorithm = AlgOid, parameters = Params} = AlgInfo,
+    PublicKeyInfo = {AlgOid, PubKey, Params},
+    {PeerCert, PublicKeyInfo}.
 
 split_certs(Certs) ->
     split_certs(Certs, []).
@@ -52,12 +40,15 @@ split_certs([Cert | Rest], Acc) when length(Acc) > 0 ->
             split_certs(Rest, [Cert | Acc])
     end;
 split_certs([Cert | Rest], Acc) ->
-    split_certs(Rest, [Cert | Acc]).
+    split_certs(Rest, [Cert | Acc]);
+split_certs([], Acc) ->
+    {lists:reverse(Acc), []}.
 
-is_end_entity(BinCert) ->
-    #'Certificate'{tbsCertificate = TBS} = public_key:pkix_decode_cert(BinCert, otp),
-    case public_key:pkix_sign_types(TBS) of
-        {_, _, _} ->
+is_end_entity(#cert{otp = OTPCert}) ->
+    #'OTPCertificate'{tbsCertificate = TBS} = OTPCert,
+    #'SignatureAlgorithm'{algorithm = AlgId} = TBS#'OTPTBSCertificate'.signature,
+    case public_key:pkix_sign_types(AlgId) of
+        _ ->
             %% Let's check basic constraints
             Extensions = TBS#'OTPTBSCertificate'.extensions,
             case get_extension(?'id-ce-basicConstraints', Extensions) of

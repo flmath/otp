@@ -181,7 +181,11 @@ cipher(?AES_CBC, CipherState, Mac, Fragment, Version) ->
 			 crypto:crypto_one_time(aes_128_cbc, Key, IV, T, true);
 		    (Key, IV, T) when byte_size(Key) =:= 32 ->
 			 crypto:crypto_one_time(aes_256_cbc, Key, IV, T, true)
-		 end, block_size(aes_128_cbc), CipherState, Mac, Fragment, Version).
+		 end, block_size(aes_128_cbc), CipherState, Mac, Fragment, Version);
+cipher(sm4_cbc, CipherState, Mac, Fragment, Version) ->
+    block_cipher(fun(Key, IV, T) ->
+			 crypto:crypto_one_time(sm4_cbc, Key, IV, T, true)
+		 end, 16, CipherState, Mac, Fragment, Version).
 
 aead_encrypt(Type, Key, Nonce, Fragment, AdditionalData, TagLen) ->
     crypto:crypto_one_time_aead(aead_type(Type,byte_size(Key)), Key, Nonce, Fragment,
@@ -286,6 +290,10 @@ decipher(?AES_CBC, HashSz, CipherState, Fragment, Version, PaddingCheck) ->
                            crypto:crypto_one_time(aes_128_cbc, Key, IV, T, false);
 		      (Key, IV, T) when byte_size(Key) =:= 32 ->
                            crypto:crypto_one_time(aes_256_cbc, Key, IV, T, false)
+		   end, CipherState, HashSz, Fragment, Version, PaddingCheck);
+decipher(sm4_cbc, HashSz, CipherState, Fragment, Version, PaddingCheck) ->
+    block_decipher(fun(Key, IV, T) ->
+                           crypto:crypto_one_time(sm4_cbc, Key, IV, T, false)
 		   end, CipherState, HashSz, Fragment, Version, PaddingCheck).
 
 block_decipher(Fun, #cipher_state{key=Key, iv=IV} = CipherState0,
@@ -570,7 +578,9 @@ hash_size(sha256) ->
 hash_size(sha384) ->
     48;
 hash_size(sha512) ->
-    64.
+    64;
+hash_size(sm3) ->
+    32.
 
 %% Handle RSA and RSA_PSS_RSAE
 is_supported_sign({Hash, rsa} = SignAlgo, HashSigns) -> %% ?rsaEncryption cert signalgo used
@@ -801,7 +811,9 @@ bulk_cipher_algorithm(Cipher) when Cipher == aes_128_ccm_8;
 				   Cipher == aes_256_ccm_8 ->
     ?AES_CCM_8;
 bulk_cipher_algorithm(chacha20_poly1305) ->
-    ?CHACHA20_POLY1305.
+    ?CHACHA20_POLY1305;
+bulk_cipher_algorithm(sm4_cbc) ->
+    sm4_cbc.
 
 type(Cipher) when Cipher == null;
 		  Cipher == rc4_128 ->
@@ -809,6 +821,7 @@ type(Cipher) when Cipher == null;
 
 type(Cipher) when Cipher == des_cbc;
 		  Cipher == '3des_ede_cbc';
+		  Cipher == sm4_cbc;
 		  Cipher == aes_128_cbc;
 		  Cipher == aes_256_cbc ->
     ?BLOCK;
@@ -846,7 +859,9 @@ key_material(aes_256_ccm_8) ->
 key_material(aes_256_ccm) ->
     32;
 key_material(chacha20_poly1305) ->
-    32.
+    32;
+key_material(sm4_cbc) ->
+    16.
 
 iv_size(Cipher) when Cipher == null;
 		     Cipher == rc4_128 ->
@@ -867,6 +882,7 @@ block_size(Cipher) when Cipher == des_cbc;
 			Cipher == des_ede3_cbc;
 			Cipher == '3des_ede_cbc' ->
     8;
+block_size(sm4_cbc) -> 16;
 block_size(Cipher) when Cipher == aes_128_cbc;
 			Cipher == aes_256_cbc;
 			Cipher == aes_128_gcm;
@@ -897,6 +913,7 @@ hash_algorithm(sha224) -> ?SHA224;
 hash_algorithm(sha256) -> ?SHA256;
 hash_algorithm(sha384) -> ?SHA384;
 hash_algorithm(sha512) -> ?SHA512;
+hash_algorithm(sm3) -> sm3;
 hash_algorithm(?NULL) -> null;
 hash_algorithm(?MD5) -> md5;
 hash_algorithm(?SHA) -> sha;
@@ -1139,6 +1156,8 @@ filter_suites_signature(rsa, Ciphers, Version) ->
 filter_suites_signature(dsa, Ciphers, Version) ->
     (Ciphers -- ecdsa_signed_suites(Ciphers, Version)) -- rsa_signed_suites(Ciphers, Version);
 filter_suites_signature(ecdsa, Ciphers, Version) ->
+    (Ciphers -- rsa_signed_suites(Ciphers, Version)) -- dsa_signed_suites(Ciphers);
+filter_suites_signature(sm2, Ciphers, Version) ->
     (Ciphers -- rsa_signed_suites(Ciphers, Version)) -- dsa_signed_suites(Ciphers).
 
 
@@ -1251,8 +1270,7 @@ ec_ecdh_suites(Ciphers)->
 
 %% EC Certs key usage digitalSignature
 ec_ecdhe_suites(Ciphers) ->
-    filter_kex(Ciphers, fun(ecdhe_ecdsa) -> true;
-                           (ecdhe_rsa)   -> true;
+    filter_kex(Ciphers, fun(ecdhe_ecdsa) -> true; (ecdhe_rsa) -> true; (sm2) -> true; (sm2_dhe) -> true;
                            (_)           -> false
                         end).
 %% RSA Certs key usage digitalSignature

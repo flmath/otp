@@ -3,6 +3,13 @@
 -include("gmssl_internal.hrl").
 
 -export([prf/5, master_secret/4, setup_keys/8, finished/4, certificate_verify/2]).
+-export([
+    generate_sm2_dhe_params/0,
+    sign_sm2_dhe_params/3,
+    sign_sm2_cert/3,
+    compute_shared_secret/2,
+    decrypt_premaster/1
+]).
 
 -spec finished(client | server, ssl:prf_alg(), binary(), [binary()]) -> binary().
 finished(Role, PrfAlgo, MasterSecret, Handshake) ->
@@ -67,3 +74,45 @@ setup_keys(?TLCP_1_1, PrfAlgo, MasterSecret, ServerRandom, ClientRandom, HashSiz
       ServerIV:IVS/binary>> = KeyBlock,
     {ClientWriteMacSecret, ServerWriteMacSecret, ClientWriteKey,
      ServerWriteKey, ClientIV, ServerIV}.
+
+%% Generate ephemeral ECDH parameters using GmSSL C tool
+generate_sm2_dhe_params() ->
+    os:cmd("LD_LIBRARY_PATH=/usr/local/bin /shared/gmssl_ecdh_gen /shared/eph_priv.pem /shared/eph_pub.bin"),
+    {ok, EphPubBin} = file:read_file("/shared/eph_pub.bin"),
+    EphPubLen = byte_size(EphPubBin),
+    <<3, 0, 41, EphPubLen, EphPubBin/binary>>.
+
+%% Sign SM2 DHE params
+sign_sm2_dhe_params(ClientRandom, ServerRandom, EncParams) ->
+    DataToSign = <<ClientRandom/binary, ServerRandom/binary, EncParams/binary>>,
+    file:write_file("/shared/data.bin", DataToSign),
+    os:cmd("LD_LIBRARY_PATH=/usr/local/bin /shared/gmssl_sign_helper /shared/certs/sign.key /shared/data.bin /shared/sig.bin"),
+    {ok, Signature} = file:read_file("/shared/sig.bin"),
+    Signature.
+
+%% Sign SM2 enc cert
+sign_sm2_cert(ClientRandom, ServerRandom, EncCert) ->
+    EncCertLen = byte_size(EncCert),
+    DataToSign = <<ClientRandom/binary, ServerRandom/binary, EncCertLen:24, EncCert/binary>>,
+    file:write_file("/shared/data.bin", DataToSign),
+    os:cmd("LD_LIBRARY_PATH=/usr/local/bin /shared/gmssl_sign_helper /shared/certs/sign.key /shared/data.bin /shared/sig.bin"),
+    {ok, Signature} = file:read_file("/shared/sig.bin"),
+    Signature.
+
+%% Compute shared secret
+compute_shared_secret(ClientStaticPubKeyBin, ClientPublicEcDhPoint) ->
+    file:write_file("/shared/client_enc_pub.bin", ClientStaticPubKeyBin),
+    file:write_file("/shared/client_eph_pub.bin", ClientPublicEcDhPoint),
+    os:cmd("LD_LIBRARY_PATH=/usr/local/bin /shared/gmssl_ecdh_compute /shared/certs/enc.key /shared/client_enc_pub.bin /shared/eph_priv.pem /shared/client_eph_pub.bin /shared/shared_secret.bin"),
+    {ok, PremasterSecret} = file:read_file("/shared/shared_secret.bin"),
+    PremasterSecret.
+
+%% Decrypt premaster secret
+decrypt_premaster(EncSecret) ->
+    file:write_file("/shared/enc_secret.bin", EncSecret),
+    file:delete("/shared/dec_secret.bin"),
+    os:cmd("LD_LIBRARY_PATH=/usr/local/bin /shared/gmssl_decrypt_helper /shared/certs/enc.key /shared/enc_secret.bin /shared/dec_secret.bin"),
+    case file:read_file("/shared/dec_secret.bin") of
+        {ok, Secret} -> Secret;
+        _ -> error
+    end.

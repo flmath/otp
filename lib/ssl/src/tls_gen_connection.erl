@@ -654,7 +654,7 @@ next_tls_record(Data, StateName,
                 %% for maximum interopability and compliance with TLS-1.2 spec.
                 %% This does not allow SSL-3.0 connections, that we do not support
                 %% or interfere with TLS-1.3 extensions to handle version negotiation.
-                AllHelloVersions = [ 'sslv3' | ?ALL_AVAILABLE_VERSIONS],
+                AllHelloVersions = [ 'tlcpv1.1', 'sslv3' | ?ALL_AVAILABLE_VERSIONS],
                 [tls_record:protocol_version_name(Vsn) || Vsn <- AllHelloVersions];
            true ->
                 Vsns0

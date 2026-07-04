@@ -539,6 +539,7 @@ validate_tls_record_version(_Versions, Q, _MaxFragLen, _Downgrade, Acc, Type, un
     {lists:reverse(Acc),
      {#ssl_tls{type = Type, version = undefined, fragment = undefined}, Q}};
 validate_tls_record_version(Versions, Q, MaxFragLen, Downgrade, Acc, Type, Version, Length) when is_list(Versions) ->
+    io:format("validate_tls_record_version Versions=~p Version=~p~n", [Versions, Version]),
     case is_acceptable_version(Version, Versions) of
         true ->
             validate_tls_record_length(Versions, Q, MaxFragLen, Downgrade, Acc, Type, Version, Length);

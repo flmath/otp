@@ -267,6 +267,7 @@ hello(#client_hello{client_version = ClientVersion,
             %% ASN-1 decode of certificate somehow failed
             throw(?ALERT_REC(?FATAL, ?INTERNAL_ERROR, {failed_to_decode_own_certificate, Asn1Reason}));
         error:Reason:ST ->
+            io:format("tls_handshake crashed: ~p:~p~n~p~n", [error, Reason, ST]),
             ?SSL_LOG(info, handshake_error, [{reason,Reason}, {stacktrace, ST}]),
             throw(?ALERT_REC(?FATAL, ?HANDSHAKE_FAILURE, malformed_handshake_data))
     end.

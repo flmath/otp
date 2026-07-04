@@ -443,8 +443,7 @@ ecdsa_support(#{versions := [?TLS_1_3]}) ->
      brainpoolP256r1
     ];
 ecdsa_support(_) ->
-    ssl:eccs() -- [x25519, x448].
-
+    [sm2p256v1 | ssl:eccs() -- [x25519, x448]].
 
 -spec(file_error(_,_) -> no_return()).
 file_error(File, Throw) ->

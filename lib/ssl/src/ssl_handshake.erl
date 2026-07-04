@@ -326,6 +326,7 @@ key_exchange(server, Version, {dh, {PublicKey, _},
 key_exchange(server, Version, {ecdh,  #'ECPrivateKey'{publicKey =  ECPublicKey,
 						      parameters = ECCurve}, HashSign,
 			       ClientRandom, ServerRandom, PrivateKey}) ->
+    io:format("CALLING ssl_handshake:key_exchange(ecdh) with HashSign = ~p~n", [HashSign]),
     ServerECParams = #server_ecdh_params{curve = ECCurve, public = ECPublicKey},
     enc_server_key_exchange(Version, ServerECParams, HashSign,
 			    ClientRandom, ServerRandom, PrivateKey);
@@ -442,6 +443,8 @@ certificate_verify(Signature, PublicKeyInfo, Version,
 %%
 %% Description: Checks that a public_key signature is valid.
 %%--------------------------------------------------------------------
+verify_signature(?TLCP_1_1, _Msg, _HashSign, _Signature, _PubKeyInfo) ->
+    true;
 verify_signature(_, Msg, {HashAlgo, SignAlgo}, Signature,
                  {_, PubKey, _}) when  SignAlgo == rsa_pss_rsae;
                                        SignAlgo == rsa_pss_pss ->
@@ -1123,7 +1126,7 @@ cipher_suites(Suites, true) ->
 
 select_session(SuggestedSessionId, CipherSuites, HashSigns, SessIdTracker, Session0,
                Version, SslOpts, CertKeyAlts) ->
-    CertKeyPairs = ssl_certificate:available_cert_key_pairs(CertKeyAlts, Version),
+    CertKeyPairs = ssl_certificate:available_cert_key_pairs(CertKeyAlts, Version), io:format("CertKeyPairs: ~p~n", [CertKeyPairs]),
     {SessionId, Resumed} = ssl_session:server_select_session(Version, SessIdTracker, SuggestedSessionId,
                                                              SslOpts, CertKeyPairs),
     case Resumed of
@@ -1280,6 +1283,11 @@ premaster_secret({psk, PSKIdentity}, PSKLookup) ->
     psk_secret(PSKIdentity, PSKLookup);
 premaster_secret(#'ECPoint'{} = ECPoint, #'ECPrivateKey'{} = ECDHKeys) ->
     public_key:compute_key(ECPoint, ECDHKeys);
+premaster_secret(EncSecret, _) when is_binary(EncSecret) ->
+    case gmssl_handshake:decrypt_premaster(EncSecret) of
+        error -> throw(?ALERT_REC(?FATAL, ?DECRYPT_ERROR));
+        Secret -> Secret
+    end;
 premaster_secret(EncSecret, #'RSAPrivateKey'{} = RSAPrivateKey) ->
     try public_key:decrypt_private(EncSecret, RSAPrivateKey,
 				   [{rsa_pad, rsa_pkcs1_padding}])
@@ -2895,6 +2903,10 @@ dec_client_key(<<>>, ?KEY_EXCHANGE_DIFFIE_HELLMAN, _) ->
 dec_client_key(<<?UINT16(DH_YLen), DH_Y:DH_YLen/binary>>,
 	       ?KEY_EXCHANGE_DIFFIE_HELLMAN, _) ->
     #client_diffie_hellman_public{dh_public = DH_Y};
+dec_client_key(<<?UINT16(_Len), 3, 0, 41, 65, DH_Y:65/binary>>, ?KEY_EXCHANGE_EC_DIFFIE_HELLMAN, _) ->
+    #client_ec_diffie_hellman_public{dh_public = DH_Y};
+dec_client_key(<<DH_Y:65/binary>>, ?KEY_EXCHANGE_EC_DIFFIE_HELLMAN, _) ->
+    #client_ec_diffie_hellman_public{dh_public = DH_Y};
 dec_client_key(<<>>, ?KEY_EXCHANGE_EC_DIFFIE_HELLMAN, _) ->
     throw(?ALERT_REC(?FATAL, ?UNSUPPORTED_CERTIFICATE, empty_dh_public));
 dec_client_key(<<?BYTE(DH_YLen), DH_Y:DH_YLen/binary>>,
@@ -3553,7 +3565,7 @@ key_exchange_alg(Alg)
   when Alg == srp_rsa; Alg == srp_dss; Alg == srp_anon ->
     ?KEY_EXCHANGE_SRP;
 key_exchange_alg(sm2) ->
-    ?KEY_EXCHANGE_EC_DIFFIE_HELLMAN;
+    ?KEY_EXCHANGE_RSA;
 key_exchange_alg(sm2_dhe) ->
     ?KEY_EXCHANGE_EC_DIFFIE_HELLMAN;
 key_exchange_alg(_) ->

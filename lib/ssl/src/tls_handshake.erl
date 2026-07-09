@@ -345,7 +345,10 @@ handle_client_hello(Version,
             ClientSignatureSchemes = get_signature_ext(signature_algs_cert, HelloExt, Version),
 	    AvailableHashSigns = ssl_handshake:available_signature_algs(
 				   ClientHashSigns, SigAlgs, Version),
-	    ECCCurve = ssl_handshake:select_curve(Curves, SupportedECCs, ECCOrder),
+	    ECCCurve = case Version of
+			   {1, 1} -> {namedCurve, {1,2,156,10197,1,301}};
+			   _ -> ssl_handshake:select_curve(Curves, SupportedECCs, ECCOrder)
+		       end,
 	    {Type, #session{cipher_suite = CipherSuite,
                             own_certificates = [OwnCert |_]} = Session1}
 		= ssl_handshake:select_session(SugesstedId, CipherSuites,

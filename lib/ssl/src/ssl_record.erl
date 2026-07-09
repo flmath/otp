@@ -445,6 +445,7 @@ make_random(_Version) ->
     <<?UINT32(Secs_since_1970), Random_28_bytes/binary>>.
 
 is_correct_mac(Mac1, Mac2) ->
+    io:format("MAC CHECK: Mac1 = ~p, Mac2 = ~p~n", [Mac1, Mac2]),
     crypto:hash_equals(Mac1, Mac2).
 
 -compile({inline, [record_protocol_role/1]}).

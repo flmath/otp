@@ -1281,6 +1281,12 @@ premaster_secret(#client_psk_identity{identity = PSKIdentity}, PSKLookup) ->
     psk_secret(PSKIdentity, PSKLookup);
 premaster_secret({psk, PSKIdentity}, PSKLookup) ->
     psk_secret(PSKIdentity, PSKLookup);
+premaster_secret(#'ECPoint'{point = Point}, #'ECPrivateKey'{parameters = {namedCurve, {1,2,156,10197,1,301}}, privateKey = PrivKey}) ->
+    PrivHex = [io_lib:format("~2.16.0B", [B]) || <<B>> <= PrivKey],
+    PubHex = [io_lib:format("~2.16.0B", [B]) || <<B>> <= Point],
+    Cmd = lists:flatten(io_lib:format("/shared/sm2_ecdh_xy ~s ~s", [PrivHex, PubHex])),
+    HexOutput = string:trim(os:cmd(Cmd)),
+    <<_:256, _:256>> = binary:decode_hex(list_to_binary(HexOutput));
 premaster_secret(#'ECPoint'{} = ECPoint, #'ECPrivateKey'{} = ECDHKeys) ->
     public_key:compute_key(ECPoint, ECDHKeys);
 premaster_secret(EncSecret, _) when is_binary(EncSecret) ->
@@ -2017,6 +2023,8 @@ select_hashsign_algs(HashSign, _, ?TLS_1_2) when HashSign =/= undefined  ->
     HashSign;
 select_hashsign_algs(undefined, ?rsaEncryption, ?TLS_1_2)  ->
     {sha, rsa};
+select_hashsign_algs(undefined,?'id-ecPublicKey', ?TLCP_1_1) ->
+    {sm3, sm2};
 select_hashsign_algs(undefined,?'id-ecPublicKey', _) ->
     {sha, ecdsa};
 select_hashsign_algs(undefined, ?rsaEncryption, _) ->
@@ -2285,6 +2293,14 @@ path_validation_alert({bad_cert, {key_usage_mismatch, _} = Reason}, _, _) ->
 path_validation_alert(Reason, _,_) ->
     ?ALERT_REC(?FATAL, ?HANDSHAKE_FAILURE, Reason).
 
+digitally_signed(_Version, Msg, _HashAlgo, PrivateKey, sm2) ->
+    PrivHex = [io_lib:format("~2.16.0B", [B]) || <<B>> <= PrivateKey#'ECPrivateKey'.privateKey],
+    {_, PubKeyBin} = PrivateKey#'ECPrivateKey'.publicKey,
+    PubHex = [io_lib:format("~2.16.0B", [B]) || <<B>> <= PubKeyBin],
+    MsgHex = [io_lib:format("~2.16.0B", [B]) || <<B>> <= Msg],
+    Cmd = lists:flatten(io_lib:format("LD_LIBRARY_PATH=/usr/local/bin /shared/sm2_sign ~s ~s ~s", [PrivHex, PubHex, MsgHex])),
+    HexOutput = string:trim(os:cmd(Cmd)),
+    binary:decode_hex(list_to_binary(HexOutput));
 digitally_signed(Version, Msg, HashAlgo, PrivateKey, SignAlgo) ->
     try do_digitally_signed(Version, Msg, HashAlgo, PrivateKey, SignAlgo)
     catch
@@ -2726,7 +2742,7 @@ encode_client_key(#client_srp_public{srp_a = A}) ->
 enc_sign({_, anon}, _Sign, _Version) ->
     <<>>;
 enc_sign({HashAlg, SignAlg}, Signature, Version)
-  when ?TLS_GTE(Version, ?TLS_1_2)->
+  when ?TLS_GTE(Version, ?TLS_1_2) ->
 	SignLen = byte_size(Signature),
 	HashSign = enc_hashsign(HashAlg, SignAlg),
 	<<HashSign/binary, ?UINT16(SignLen), Signature/binary>>;
@@ -2748,6 +2764,26 @@ encode_protocol(Protocol, Acc) ->
 	Len = byte_size(Protocol),
 	<<Acc/binary, ?BYTE(Len), Protocol/binary>>.
 
+enc_server_key_exchange(?TLCP_1_1, #server_ecdh_params{public = ECPubKey} = Params, {HashAlgo, SignAlgo},
+			ClientRandom, ServerRandom, PrivateKey) ->
+    KLen = byte_size(ECPubKey),
+    EncParams = <<3:8, 41:16, ?BYTE(KLen), ECPubKey/binary>>,
+    case HashAlgo of
+	null ->
+	    #server_key_params{params = Params,
+			       params_bin = EncParams,
+			       hashsign = {null, anon},
+			       signature = <<>>};
+	_ ->
+	    Hash = server_key_exchange_hash(HashAlgo, <<ClientRandom/binary,
+                                                        ServerRandom/binary,
+						        EncParams/binary>>),
+	    Signature = digitally_signed(?TLCP_1_1, Hash, HashAlgo, PrivateKey, SignAlgo),
+	    #server_key_params{params = Params,
+			       params_bin = EncParams,
+			       hashsign = {HashAlgo, SignAlgo},
+			       signature = Signature}
+    end;
 enc_server_key_exchange(Version, Params, {HashAlgo, SignAlgo},
 			ClientRandom, ServerRandom, PrivateKey) ->
     EncParams = encode_server_key(Params),

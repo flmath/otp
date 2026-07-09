@@ -501,6 +501,7 @@ mac_hash(Method, Mac_write_secret, Seq_num, Type, Version,Length, Fragment) ->
     %%              TLSCompressed.version + TLSCompressed.length +
     %%              TLSCompressed.fragment));
     {Major,Minor} = Version,
+    io:format("MAC_HASH INPUTS: Method=~p, Mac_write_secret=~p, Seq=~p, Type=~p, Version=~p, Length=~p, Fragment=~p~n", [Method, Mac_write_secret, Seq_num, Type, Version, Length, Fragment]),
     Mac = hmac_hash(Method, Mac_write_secret,
 		    [<<?UINT64(Seq_num), ?BYTE(Type),
 		      ?BYTE(Major), ?BYTE(Minor), ?UINT16(Length)>>,

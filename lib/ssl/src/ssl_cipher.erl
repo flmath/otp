@@ -229,7 +229,7 @@ block_cipher(Fun, BlockSz, #cipher_state{key=Key, iv=IV} = CS0,
 
 block_cipher(Fun, BlockSz, #cipher_state{key=Key, iv=IV, state = IV_Cache0} = CS0,
 	     Mac, Fragment, Version)
-  when ?TLS_GT(Version, ?TLS_1_0)->
+  when ?TLS_GT(Version, ?TLS_1_0) orelse (Version =:= ?TLCP_1_1) ->
     IV_Size = byte_size(IV),
     <<NextIV:IV_Size/binary, IV_Cache/binary>> =
         case IV_Cache0 of
@@ -300,6 +300,7 @@ block_decipher(Fun, #cipher_state{key=Key, iv=IV} = CipherState0,
 	       HashSz, Fragment, Version, PaddingCheck) ->
     try
 	Text = Fun(Key, IV, Fragment),
+    io:format("BLOCK_DECIPHER: Decrypted Text = ~p~n", [Text]),
 	NextIV = next_iv(Fragment, IV),
 	GBC = generic_block_cipher_from_bin(Version, Text, NextIV, HashSz),
 	Content = GBC#generic_block_cipher.content,
@@ -323,8 +324,9 @@ block_decipher(Fun, #cipher_state{key=Key, iv=IV} = CipherState0,
 	    %% alerts may permit certain attacks against CBC mode as used in
 	    %% TLS [CBCATT].  It is preferable to uniformly use the
 	    %% bad_record_mac alert to hide the specific type of the error."
-            ?SSL_LOG(debug, decrypt_error, [{reason,Reason}, {stacktrace, ST}]),
-            ?ALERT_REC(?FATAL, ?BAD_RECORD_MAC, decryption_failed)
+        io:format("CATCH block_decipher: ~p~n~p~n", [Reason, ST]),
+        ?SSL_LOG(debug, decrypt_error, [{reason,Reason}, {stacktrace, ST}]),
+        ?ALERT_REC(?FATAL, ?BAD_RECORD_MAC, decryption_failed)
     end.
 
 %%--------------------------------------------------------------------
@@ -913,7 +915,7 @@ hash_algorithm(sha224) -> ?SHA224;
 hash_algorithm(sha256) -> ?SHA256;
 hash_algorithm(sha384) -> ?SHA384;
 hash_algorithm(sha512) -> ?SHA512;
-hash_algorithm(sm3) -> sm3;
+hash_algorithm(sm3) -> 7;
 hash_algorithm(?NULL) -> null;
 hash_algorithm(?MD5) -> md5;
 hash_algorithm(?SHA) -> sha;
@@ -921,18 +923,22 @@ hash_algorithm(?SHA224) -> sha224;
 hash_algorithm(?SHA256) -> sha256;
 hash_algorithm(?SHA384) -> sha384;
 hash_algorithm(?SHA512) -> sha512;
-hash_algorithm(Other)  when is_integer(Other), Other >= 7, Other =< 223 -> unassigned;
+hash_algorithm(7) -> sm3;
+hash_algorithm(Other)  when is_integer(Other), Other > 7, Other =< 223 -> unassigned;
 hash_algorithm(Other)  when is_integer(Other), Other >= 224, Other =< 255 -> Other.
 
 sign_algorithm(anon)  -> ?ANON;
 sign_algorithm(rsa)   -> ?RSA;
 sign_algorithm(dsa)   -> ?DSA;
 sign_algorithm(ecdsa) -> ?ECDSA;
+sign_algorithm(sm2)   -> 8;
 sign_algorithm(?ANON) -> anon;
 sign_algorithm(?RSA) -> rsa;
 sign_algorithm(?DSA) -> dsa;
 sign_algorithm(?ECDSA) -> ecdsa;
-sign_algorithm(Other) when is_integer(Other), Other >= 4, Other =< 223 -> unassigned;
+sign_algorithm(8) -> sm2;
+sign_algorithm(Other) when is_integer(Other), Other >= 4, Other =< 7 -> unassigned;
+sign_algorithm(Other) when is_integer(Other), Other > 8, Other =< 223 -> unassigned;
 sign_algorithm(Other) when is_integer(Other), Other >= 224, Other =< 255 -> Other.
 
 
@@ -1030,7 +1036,11 @@ signature_algorithm_to_scheme(#'SignatureAlgorithm'{algorithm = ?'id-RSASSA-PSS'
 %%   We return the original (possibly invalid) PadLength in any case.
 %%   An invalid PadLength will be caught by is_correct_padding/2
 %%
-generic_block_cipher_from_bin(?TLS_1_0, T, IV, HashSize)->
+generic_block_cipher_from_bin(Version, T, IV, HashSize) ->
+    io:format("GENERIC_BLOCK_CIPHER: Version = ~p~n", [Version]),
+    generic_block_cipher_from_bin_inner(Version, T, IV, HashSize).
+
+generic_block_cipher_from_bin_inner(?TLS_1_0, T, IV, HashSize) ->
     Sz1 = byte_size(T) - 1,
     <<_:Sz1/binary, ?BYTE(PadLength0)>> = T,
     PadLength = if
@@ -1044,8 +1054,8 @@ generic_block_cipher_from_bin(?TLS_1_0, T, IV, HashSize)->
 			  padding=Padding, padding_length=PadLength0,
 			  next_iv = IV};
 
-generic_block_cipher_from_bin(Version, T, IV, HashSize)
-  when Version == ?TLS_1_1; Version == ?TLS_1_2 ->
+generic_block_cipher_from_bin_inner(Version, T, IV, HashSize)
+  when Version == ?TLS_1_1; Version == ?TLS_1_2; Version == ?TLCP_1_1 ->
     Sz1 = byte_size(T) - 1,
     <<_:Sz1/binary, ?BYTE(PadLength)>> = T,
     IVLength = byte_size(IV),

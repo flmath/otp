@@ -487,9 +487,11 @@ certify_server(#state{handshake_env = #handshake_env{kex_algorithm = KexAlg}} =
     State;
 certify_server(#state{static_env = #static_env{cert_db = CertDbHandle,
                                                cert_db_ref = CertDbRef},
+                      connection_env = #connection_env{},
 		      session = #session{own_certificates = OwnCerts}} = State, Connection) ->
-    Cert = ssl_handshake:certificate(OwnCerts, CertDbHandle, CertDbRef, server),
-    #certificate{} = Cert,  %% Assert
+    #certificate{asn1_certificates = Certs0} = ssl_handshake:certificate(OwnCerts, CertDbHandle, CertDbRef, server),
+    Certs = Certs0,
+    Cert = #certificate{asn1_certificates = Certs},
     Connection:queue_handshake(Cert, State).
 
 key_exchange(#state{handshake_env = #handshake_env{kex_algorithm = rsa}} = State,_) ->
@@ -529,6 +531,7 @@ key_exchange(#state{handshake_env = #handshake_env{kex_algorithm = KexAlg,
 		    connection_states = ConnectionStates0} = State0, Connection)
   when KexAlg == ecdhe_ecdsa;
        KexAlg == ecdhe_rsa;
+       KexAlg == sm2_dhe;
        KexAlg == ecdh_anon ->
     io:format("MATCHED ecdhe clause in tls_dtls_server_connection:key_exchange. KexAlg = ~p~n", [KexAlg]),
     assert_curve(ECCCurve),
@@ -546,33 +549,19 @@ key_exchange(#state{handshake_env = #handshake_env{kex_algorithm = KexAlg,
     State#state{handshake_env = HsEnv#handshake_env{kex_keys = ECDHKeys}};
 
 key_exchange(#state{handshake_env = #handshake_env{kex_algorithm = KexAlg},
-                    connection_env = #connection_env{negotiated_version = Version},
-		    session = #session{},
-		    connection_states = ConnectionStates0} = State0, Connection)
-  when KexAlg == sm2_dhe ->
+                    session = #session{own_certificates = OwnCerts},
+                    connection_states = ConnectionStates0} = State0, Connection)
+  when KexAlg == sm2 ->
     #{security_parameters := SecParams} =
-	ssl_record:pending_connection_state(ConnectionStates0, read),
+        ssl_record:pending_connection_state(ConnectionStates0, read),
     #security_parameters{client_random = ClientRandom,
-			 server_random = ServerRandom} = SecParams,
-    
-    EncParams = gmssl_handshake:generate_sm2_dhe_params(),
-    Signature = gmssl_handshake:sign_sm2_dhe_params(ClientRandom, ServerRandom, EncParams),
-    
-    Msg = #server_key_params{params = <<>>, params_bin = EncParams, hashsign = {sm3, sm2}, signature = Signature},
-    #state{handshake_env = HsEnv} = State = Connection:queue_handshake(Msg, State0),
-    State#state{handshake_env = HsEnv#handshake_env{kex_keys = sm2_dhe_ephemeral}};
-key_exchange(#state{handshake_env = #handshake_env{kex_algorithm = sm2},
-                    connection_env = #connection_env{negotiated_version = Version},
-		    session = #session{},
-		    connection_states = ConnectionStates0} = State0, Connection) ->
-    #{security_parameters := SecParams} =
-	ssl_record:pending_connection_state(ConnectionStates0, read),
-    #security_parameters{client_random = ClientRandom,
-			 server_random = ServerRandom} = SecParams,
-    {ok, PemBin} = file:read_file("/shared/certs/enc.crt"),
-    [{'Certificate', EncCert, _}] = public_key:pem_decode(PemBin),
-    
-    Signature = gmssl_handshake:sign_sm2_cert(ClientRandom, ServerRandom, EncCert),
+                         server_random = ServerRandom} = SecParams,
+    [_, EncCert | _] = OwnCerts,
+    EncCertLen = byte_size(EncCert),
+    DataToSign = <<ClientRandom/binary, ServerRandom/binary, ?UINT24(EncCertLen), EncCert/binary>>,
+    file:write_file("/shared/data.bin", DataToSign),
+    os:cmd("/shared/gmssl_sign_helper /shared/certs/sign.key /shared/data.bin /shared/sig.bin"),
+    {ok, Signature} = file:read_file("/shared/sig.bin"),
     Msg = #server_key_params{params = <<>>, params_bin = <<>>, hashsign = {sm3, sm2}, signature = Signature},
     #state{handshake_env = HsEnv} = State = Connection:queue_handshake(Msg, State0),
     State#state{handshake_env = HsEnv#handshake_env{kex_keys = undefined}};
@@ -714,6 +703,31 @@ request_client_cert(#state{ssl_options = #{verify := verify_none}} =
 		    State, _) ->
     State.
 
+certify_client_key_exchange(#encrypted_premaster_secret{premaster_secret = EncPMS},
+                            #state{handshake_env = #handshake_env{
+                                                      kex_algorithm = sm2,
+                                                      client_hello_version = Version,
+                                                      client_certificate_status = CCStatus
+                                                     }
+                                  } = State, Connection) ->
+    {Major, Minor} = Version,
+    FakeSecret = tls_dtls_gen_connection:make_premaster_secret(Version, rsa),
+    file:write_file("/tmp/pms.bin", EncPMS),
+    os:cmd("LD_LIBRARY_PATH=/usr/local/bin /shared/gmssl_decrypt_helper /shared/certs/enc.key /tmp/pms.bin /tmp/pms_out.bin"),
+    PremasterSecret = case file:read_file("/tmp/pms_out.bin") of
+        {ok, Secret} when erlang:byte_size(Secret) == 48 ->
+            case Secret of
+                <<Major:8, Minor:8, _Rest/binary>> ->
+                    Secret;
+                <<_:8, _:8, _Rest/binary>> ->
+                    <<Major:8, Minor:8, _Rest/binary>>
+            end;
+        _ ->
+            FakeSecret
+    end,
+    tls_dtls_gen_connection:calculate_master_secret(PremasterSecret, State, Connection,
+                                                    certify, client_kex_next_state(CCStatus));
+
 certify_client_key_exchange(#encrypted_premaster_secret{premaster_secret= EncPMS},
 			    #state{session = #session{private_key = PrivateKey},
                                    handshake_env = #handshake_env{
@@ -755,27 +769,6 @@ certify_client_key_exchange(#client_diffie_hellman_public{dh_public = ClientPubl
     tls_dtls_gen_connection:calculate_master_secret(PremasterSecret, State,
                                                     Connection, certify,
                                                     client_kex_next_state(CCStatus));
-
-certify_client_key_exchange(#client_ec_diffie_hellman_public{dh_public = ClientPublicEcDhPoint},
-			    #state{handshake_env =
-                                       #handshake_env{kex_keys = sm2_dhe_ephemeral,
-                                                      client_certificate_status = CCStatus},
-                                   session = #session{peer_certificate = PeerCert}
-                                  } = State, Connection) ->
-    DerCert = PeerCert,
-    DecodedCert = public_key:pkix_decode_cert(DerCert, otp),
-    TBSCert = DecodedCert#'OTPCertificate'.tbsCertificate,
-    SPKI = TBSCert#'OTPTBSCertificate'.subjectPublicKeyInfo,
-    ClientStaticPubKeyBin = case SPKI#'OTPSubjectPublicKeyInfo'.subjectPublicKey of
-        {0, Bin} -> Bin;
-        {'ECPoint', Bin} -> Bin
-    end,
-    
-    PremasterSecret = gmssl_handshake:compute_shared_secret(ClientStaticPubKeyBin, ClientPublicEcDhPoint),
-    tls_dtls_gen_connection:calculate_master_secret(PremasterSecret, State,
-                                                    Connection, certify,
-                                                    client_kex_next_state(CCStatus));
-
 certify_client_key_exchange(#client_ec_diffie_hellman_public{dh_public = ClientPublicEcDhPoint},
 			    #state{handshake_env =
                                        #handshake_env{kex_keys = ECDHKey,

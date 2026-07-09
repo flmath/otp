@@ -80,7 +80,7 @@ generate_sm2_dhe_params() ->
     os:cmd("LD_LIBRARY_PATH=/usr/local/bin /shared/gmssl_ecdh_gen /shared/eph_priv.pem /shared/eph_pub.bin"),
     {ok, EphPubBin} = file:read_file("/shared/eph_pub.bin"),
     EphPubLen = byte_size(EphPubBin),
-    <<3, 0, 41, EphPubLen, EphPubBin/binary>>.
+    <<EphPubLen, EphPubBin/binary>>.
 
 %% Sign SM2 DHE params
 sign_sm2_dhe_params(ClientRandom, ServerRandom, EncParams) ->

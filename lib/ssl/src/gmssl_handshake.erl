@@ -7,7 +7,7 @@
     generate_sm2_dhe_params/0,
     sign_sm2_dhe_params/3,
     sign_sm2_cert/3,
-    compute_shared_secret/2,
+    compute_shared_secret/3,
     decrypt_premaster/1
 ]).
 
@@ -32,7 +32,7 @@ certificate_verify(HashAlgo, Handshake) ->
 
 -spec prf(ssl:mac_alg(), binary(), string(), [binary()], non_neg_integer()) ->
           {ok, binary()} | {error, any()}.
-prf(sm3, Secret, Label, Seed, WantedLength) ->
+prf(PrfAlgo, Secret, Label, Seed, WantedLength) when PrfAlgo =:= sm3 orelse PrfAlgo =:= 7 ->
     %% TLCP uses SM3 for PRF. The PRF is defined as:
     %% PRF(Secret, label, seed) = P_SM3(Secret, label + seed)
     %% P_SM3(secret, seed) = HMAC_SM3(secret, A(1) + seed) + HMAC_SM3(secret, A(2) + seed) + ...
@@ -43,8 +43,8 @@ prf(sm3, Secret, Label, Seed, WantedLength) ->
     catch
         error:Reason -> {error, Reason}
     end;
-prf(_, _, _, _, _) ->
-    {error, unsupported_mac}.
+prf(Algo, _, _, _, _) ->
+    {error, {unsupported_mac, Algo}}.
 
 -spec master_secret(ssl_record:ssl_version(), binary(), binary(), binary()) ->
           {ok, binary()} | {error, any()}.
@@ -100,12 +100,26 @@ sign_sm2_cert(ClientRandom, ServerRandom, EncCert) ->
     Signature.
 
 %% Compute shared secret
-compute_shared_secret(ClientStaticPubKeyBin, ClientPublicEcDhPoint) ->
+compute_shared_secret(ClientStaticPubKeyBin, ClientPublicEcDhPoint, ServerEphPrivKey) ->
     file:write_file("/shared/client_enc_pub.bin", ClientStaticPubKeyBin),
     file:write_file("/shared/client_eph_pub.bin", ClientPublicEcDhPoint),
-    os:cmd("LD_LIBRARY_PATH=/usr/local/bin /shared/gmssl_ecdh_compute /shared/certs/enc.key /shared/client_enc_pub.bin /shared/eph_priv.pem /shared/client_eph_pub.bin /shared/shared_secret.bin"),
+    %% If ServerEphPrivKey is {eph_pem, Path}, the PEM file was already
+    %% written by gmssl_ecdh_gen in GmSSL-native PKCS#8 format — just use it.
+    %% Otherwise fall back to Erlang PEM encode (SEC1 format, may not work with GmSSL).
+    case ServerEphPrivKey of
+        {eph_pem, _Path} ->
+            ok;  %% /shared/eph_priv.pem already in correct PKCS#8 format
+        _ ->
+            PemEntry = public_key:pem_entry_encode('ECPrivateKey', ServerEphPrivKey),
+            PemBin = public_key:pem_encode([PemEntry]),
+            file:write_file("/shared/eph_priv.pem", PemBin)
+    end,
+    file:delete("/shared/shared_secret.bin"),
+    Output = os:cmd("LD_LIBRARY_PATH=/usr/local/bin /shared/gmssl_ecdh_compute /shared/certs/enc.key /shared/client_enc_pub.bin /shared/eph_priv.pem /shared/client_eph_pub.bin /shared/shared_secret.bin 2>&1"),
+    io:format("gmssl_ecdh_compute output: ~s~n", [Output]),
     {ok, PremasterSecret} = file:read_file("/shared/shared_secret.bin"),
     PremasterSecret.
+
 
 %% Decrypt premaster secret
 decrypt_premaster(EncSecret) ->

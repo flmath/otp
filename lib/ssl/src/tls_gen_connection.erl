@@ -257,6 +257,7 @@ gen_info(Event, StateName, State) ->
         handle_info(Event, StateName, State)
     catch
         _:Reason:ST ->
+            io:format("CRASH IN GEN_INFO: ~p ~p~n", [Reason, ST]),
             ?SSL_LOG(info, handshake_error, [{error, Reason}, {stacktrace, ST}]),
 	    ssl_gen_statem:handle_own_alert(?ALERT_REC(?FATAL, ?HANDSHAKE_FAILURE,
 						       malformed_handshake_data),

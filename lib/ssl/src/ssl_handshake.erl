@@ -2295,11 +2295,16 @@ path_validation_alert(Reason, _,_) ->
 
 digitally_signed(_Version, Msg, _HashAlgo, PrivateKey, sm2) ->
     PrivHex = [io_lib:format("~2.16.0B", [B]) || <<B>> <= PrivateKey#'ECPrivateKey'.privateKey],
-    {_, PubKeyBin} = PrivateKey#'ECPrivateKey'.publicKey,
+    PubKeyBin = case PrivateKey#'ECPrivateKey'.publicKey of
+                    {_, Bin} -> Bin;
+                    Bin when is_binary(Bin) -> Bin
+                end,
     PubHex = [io_lib:format("~2.16.0B", [B]) || <<B>> <= PubKeyBin],
     MsgHex = [io_lib:format("~2.16.0B", [B]) || <<B>> <= Msg],
-    Cmd = lists:flatten(io_lib:format("LD_LIBRARY_PATH=/usr/local/bin /shared/sm2_sign ~s ~s ~s", [PrivHex, PubHex, MsgHex])),
-    HexOutput = string:trim(os:cmd(Cmd)),
+    io:format("DEBUG_SM2_SIGN: Priv=~s Pub=~s Msg=~s~n", [PrivHex, PubHex, MsgHex]),
+    Cmd = lists:flatten(io_lib:format("LD_LIBRARY_PATH=/usr/local/bin /shared/sm2_sign ~s ~s ~s 2>/dev/null", [PrivHex, PubHex, MsgHex])),
+    RawOutput = string:trim(os:cmd(Cmd)),
+    HexOutput = lists:last(string:lexemes(RawOutput, "\n")),
     binary:decode_hex(list_to_binary(HexOutput));
 digitally_signed(Version, Msg, HashAlgo, PrivateKey, SignAlgo) ->
     try do_digitally_signed(Version, Msg, HashAlgo, PrivateKey, SignAlgo)

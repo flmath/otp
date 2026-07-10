@@ -1073,7 +1073,8 @@ mac_algo(?MD5)    -> md5;
 mac_algo(?SHA)    -> sha;
 mac_algo(?SHA256) -> sha256;
 mac_algo(?SHA384) -> sha384;
-mac_algo(?SHA512) -> sha512.
+mac_algo(?SHA512) -> sha512;
+mac_algo(7)       -> sm3.
 
 % First, we define a data expansion function, P_hash(secret, data) that
 % uses a single hash function to expand a secret and seed into an

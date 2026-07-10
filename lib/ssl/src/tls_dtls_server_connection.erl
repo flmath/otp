@@ -531,7 +531,6 @@ key_exchange(#state{handshake_env = #handshake_env{kex_algorithm = KexAlg,
 		    connection_states = ConnectionStates0} = State0, Connection)
   when KexAlg == ecdhe_ecdsa;
        KexAlg == ecdhe_rsa;
-       KexAlg == sm2_dhe;
        KexAlg == ecdh_anon ->
     io:format("MATCHED ecdhe clause in tls_dtls_server_connection:key_exchange. KexAlg = ~p~n", [KexAlg]),
     assert_curve(ECCCurve),
@@ -547,6 +546,39 @@ key_exchange(#state{handshake_env = #handshake_env{kex_algorithm = KexAlg,
 				       PrivateKey}),
     #state{handshake_env = HsEnv} = State = Connection:queue_handshake(Msg, State0),
     State#state{handshake_env = HsEnv#handshake_env{kex_keys = ECDHKeys}};
+
+%% SM2 DHE key exchange: use GmSSL-native keygen to produce PKCS#8 PEM
+%% that gmssl_ecdh_compute can read (Erlang's public_key encodes SEC1 which GmSSL rejects)
+key_exchange(#state{handshake_env = #handshake_env{kex_algorithm = sm2_dhe},
+                    connection_env = #connection_env{negotiated_version = _Version},
+                    session = #session{private_key = _PrivateKey},
+                    connection_states = ConnectionStates0} = State0, Connection) ->
+    io:format("MATCHED sm2_dhe clause in tls_dtls_server_connection:key_exchange~n"),
+    #{security_parameters := SecParams} =
+        ssl_record:pending_connection_state(ConnectionStates0, read),
+    #security_parameters{client_random = ClientRandom,
+                         server_random = ServerRandom} = SecParams,
+    %% Generate ephemeral keypair using GmSSL (writes /shared/eph_priv.pem in PKCS#8 format)
+    EphPubWithLen = gmssl_handshake:generate_sm2_dhe_params(),
+    <<EphPubLen:8, EphPubBin:EphPubLen/binary>> = EphPubWithLen,
+    %% Build ServerKeyExchange EncParams: curve_type=named_curve(3), curve_id=sm2p256v1(0x0029), point
+    EncParams = <<3:8, 41:16, EphPubLen:8, EphPubBin/binary>>,
+    %% Sign with GmSSL sign helper (SM2 signing key)
+    DataToSign = <<ClientRandom/binary, ServerRandom/binary, EncParams/binary>>,
+    file:write_file("/shared/data.bin", DataToSign),
+    os:cmd("LD_LIBRARY_PATH=/usr/local/bin /shared/gmssl_sign_helper /shared/certs/sign.key /shared/data.bin /shared/sig.bin"),
+    {ok, Signature} = file:read_file("/shared/sig.bin"),
+    ServerECParams = #server_ecdh_params{
+        curve = {namedCurve, {1,2,156,10197,1,301}},
+        public = EphPubBin
+    },
+    Msg = #server_key_params{params = ServerECParams,
+                             params_bin = EncParams,
+                             hashsign = {sm3, sm2},
+                             signature = Signature},
+    #state{handshake_env = HsEnv} = State = Connection:queue_handshake(Msg, State0),
+    %% Store PEM path token so compute_shared_secret can find the PKCS#8-encoded ephemeral private key
+    State#state{handshake_env = HsEnv#handshake_env{kex_keys = {eph_pem, "/shared/eph_priv.pem"}}};
 
 key_exchange(#state{handshake_env = #handshake_env{kex_algorithm = KexAlg},
                     session = #session{own_certificates = OwnCerts},
@@ -774,8 +806,13 @@ certify_client_key_exchange(#client_ec_diffie_hellman_public{dh_public = ClientP
                                        #handshake_env{kex_keys = ECDHKey,
                                                       client_certificate_status = CCStatus}
                                   } = State, Connection) ->
-    PremasterSecret =
-        ssl_handshake:premaster_secret(#'ECPoint'{point = ClientPublicEcDhPoint}, ECDHKey),
+    {ok, DerCert} = file:read_file("/shared/client_enc_cert.der"),
+    OTP = public_key:pkix_decode_cert(DerCert, otp),
+    TbsCert = OTP#'OTPCertificate'.tbsCertificate,
+    SPKI = TbsCert#'OTPTBSCertificate'.subjectPublicKeyInfo,
+    {'ECPoint', ClientStaticPubKeyBin} = SPKI#'OTPSubjectPublicKeyInfo'.subjectPublicKey,
+    ClientPublicEcDhPointBin = ClientPublicEcDhPoint,
+    PremasterSecret = gmssl_handshake:compute_shared_secret(ClientStaticPubKeyBin, ClientPublicEcDhPointBin, ECDHKey),
     tls_dtls_gen_connection:calculate_master_secret(PremasterSecret, State,
                                                     Connection, certify,
                                                     client_kex_next_state(CCStatus));

@@ -49,6 +49,10 @@
 	       ssl,  %% Main API
 	       ssl_session_cache_api,
 	       %% Both TLS/SSL and DTLS
+	       gmssl_certificate,
+	       gmssl_cipher,
+	       gmssl_handshake,
+	       gmssl_record,
                tls_dtls_client_connection,
                tls_dtls_server_connection,
                tls_dtls_gen_connection,

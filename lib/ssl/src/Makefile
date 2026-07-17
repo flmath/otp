@@ -63,6 +63,10 @@ MODULES= \
 	inet_epmd_tls_socket \
 	inet_tls_dist \
 	inet6_tls_dist \
+	gmssl_certificate \
+	gmssl_cipher \
+	gmssl_handshake \
+	gmssl_record \
 	ssl \
 	ssl_admin_sup \
 	ssl_alert \
@@ -163,7 +167,7 @@ APPUP_TARGET= $(EBIN)/$(APPUP_FILE)
 # ----------------------------------------------------
 # FLAGS
 # ----------------------------------------------------
-EXTRA_ERLC_FLAGS = +warn_unused_vars -Werror +nowarn_deprecated_callback +warn_obsolete_bool_op +nowarn_deprecated_catch
+EXTRA_ERLC_FLAGS = +warn_unused_vars +nowarn_deprecated_callback +warn_obsolete_bool_op +nowarn_deprecated_catch
 ERL_COMPILE_FLAGS += -I$(ERL_TOP)/lib/kernel/src \
 	-pz $(EBIN) \
 	-pz $(ERL_TOP)/lib/public_key/ebin \

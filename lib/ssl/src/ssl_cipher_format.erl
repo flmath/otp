@@ -208,6 +208,10 @@ suite_openssl_str_to_map("SRP-" ++ Rest) ->
 %% They should be supported or removed in the future.
 %%-------------------------------------------------------------------
 %% TLS v1.1 suites
+suite_bin_to_map(<<16#e0, 16#11>>) ->
+    #{key_exchange => sm2_dhe, cipher => sm4_cbc, mac => sm3, prf => sm3};
+suite_bin_to_map(<<16#e0, 16#13>>) ->
+    #{key_exchange => sm2, cipher => sm4_cbc, mac => sm3, prf => sm3};
 suite_bin_to_map(?TLS_NULL_WITH_NULL_NULL) ->
     #{key_exchange => null,
       cipher => null, 
@@ -1662,6 +1666,10 @@ suite_map_to_bin(#{key_exchange := dhe_rsa,
     ?TLS_DHE_RSA_WITH_CHACHA20_POLY1305_SHA256;
 
 %% RFC 6655 - TLS-1.2 cipher suites
+suite_map_to_bin(#{key_exchange := sm2_dhe, cipher := sm4_cbc, mac := sm3, prf := sm3}) ->
+    <<16#e0, 16#11>>;
+suite_map_to_bin(#{key_exchange := sm2, cipher := sm4_cbc, mac := sm3, prf := sm3}) ->
+    <<16#e0, 16#13>>;
 suite_map_to_bin(#{key_exchange := psk,
         cipher := aes_128_ccm,
         mac := aead,

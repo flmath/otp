@@ -1507,6 +1507,8 @@ revocation list.
 %%--------------------------------------------------------------------
 pkix_sign_types(?sha1WithRSAEncryption) ->
     {sha, rsa};
+pkix_sign_types({1,2,156,10197,1,501}) ->
+    {sm3, ecdsa};
 pkix_sign_types(?'sha-1WithRSAEncryption') ->
     {sha, rsa};
 pkix_sign_types(?sha224WithRSAEncryption) ->

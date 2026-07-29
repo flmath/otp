@@ -101,6 +101,7 @@
 %% enums are only used internally anyway.
 -define(AES_CCM, 10). 
 -define(AES_CCM_8, 11). 
+-define(SM4_CBC, 12).
 
 %% CipherType
 -define(STREAM, 0).
@@ -120,6 +121,8 @@
 -define(SHA256, 4).
 -define(SHA384, 5).
 -define(SHA512, 6).
+-define(SM3, 7).
+-define(SM2, 8).
 
 %% See also cipher.hrl for #cipher_state{}
 
@@ -167,7 +170,7 @@
 -define(PROTOCOL_TO_BINARY_VERSION(Version), (Version)).
 -define(BINARY_PROTOCOL_TO_INTERNAL_REPRESENTATION(Version), (Version)).
 
--define(TLS_1_X(Version), (element(1,Version) == 3)).
+-define(TLS_1_X(Version), (element(1,Version) == 3 orelse element(1,Version) == 1)).
 -define(DTLS_1_X(Version), (element(1,Version) == 254)).
 
 -define(TLS_GTE(Version1, Version2), (Version1 >= Version2)).

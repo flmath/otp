@@ -195,7 +195,8 @@ finished(Role, Version, PrfAlgo, MasterSecret, Handshake)
 %% TLS 1.0 -1.1  ---------------------------------------------------
 
 %% TLS 1.2 ---------------------------------------------------
-finished(Role, ?TLS_1_2, PrfAlgo, MasterSecret, Handshake) ->
+finished(Role, Version, PrfAlgo, MasterSecret, Handshake)
+  when Version == ?TLS_1_2; Version == {1,1} ->
     %% RFC 5246 - 7.4.9. Finished
     %% struct {
     %%          opaque verify_data[12];
@@ -283,8 +284,8 @@ setup_keys(?TLS_1_1, _PrfAlgo, MasterSecret, ServerRandom, ClientRandom, HashSiz
 %% TLS v1.1 ---------------------------------------------------
 
 %% TLS v1.2  ---------------------------------------------------
-setup_keys(?TLS_1_2, PrfAlgo, MasterSecret, ServerRandom, ClientRandom, HashSize,
-	   KeyMatLen, IVSize) ->
+setup_keys(Version, PrfAlgo, MasterSecret, ServerRandom, ClientRandom, HashSize,
+	   KeyMatLen, IVSize) when Version =:= ?TLS_1_2; Version =:= {1, 1} ->
     %% RFC 5246 - 6.3. Key calculation
     %% key_block = PRF(SecurityParameters.master_secret,
     %%                      "key expansion",
@@ -513,6 +514,7 @@ mac_hash(Method, Mac_write_secret, Seq_num, Type, Version,Length, Fragment) ->
 suites(Version) when ?TLS_1_X(Version) ->
     lists:flatmap(fun default_suites/1, suites_in_version(Version)).
 
+suites_in_version({1,1}) -> [{1,1}];
 suites_in_version(?TLS_1_0) -> [?TLS_1_0];
 suites_in_version(?TLS_1_1) -> [?TLS_1_0];
 suites_in_version(?TLS_1_2) -> [?TLS_1_2];
@@ -522,6 +524,8 @@ suites_in_version(?TLS_1_3) -> [?TLS_1_3, ?TLS_1_2].
 
 default_suites(?TLS_1_3 = Version) ->
     exclusive_suites(Version) -- aes_ccm_8_suites(Version);
+default_suites({1,1} = Version) ->
+    exclusive_suites(Version);
 default_suites(?TLS_1_2) ->
     [?TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
      ?TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
@@ -562,6 +566,9 @@ exclusive_suites(?TLS_1_3) ->
      ?TLS_AES_128_CCM_SHA256,
      ?TLS_AES_128_CCM_8_SHA256
     ];
+exclusive_suites({1,1}) ->
+    [<<16#e0, 16#11>>,
+     <<16#e0, 16#13>>];
 exclusive_suites(?TLS_1_2) ->
     [?TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
      ?TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
@@ -625,6 +632,8 @@ exclusive_suites(?TLS_1_0) ->
 %% in Version, only supported if explicitly set by user.
 %%--------------------------------------------------------------------
 exclusive_anonymous_suites(?TLS_1_3) ->
+    [];
+exclusive_anonymous_suites({1,1}) ->
     [];
 exclusive_anonymous_suites(?TLS_1_2=Version) ->
     psk_anon_exclusive(Version) ++
@@ -1072,7 +1081,8 @@ mac_algo(?MD5)    -> md5;
 mac_algo(?SHA)    -> sha;
 mac_algo(?SHA256) -> sha256;
 mac_algo(?SHA384) -> sha384;
-mac_algo(?SHA512) -> sha512.
+mac_algo(?SHA512) -> sha512;
+mac_algo(7)       -> sm3.
 
 % First, we define a data expansion function, P_hash(secret, data) that
 % uses a single hash function to expand a secret and seed into an

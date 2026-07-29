@@ -71,7 +71,7 @@
 %% Keep as interop with legacy software but do not support as default
 %% tlsv1.0 and tlsv1.1 is now also considered legacy
 %% tlsv1.3 is under development (experimental).
--define(ALL_AVAILABLE_VERSIONS, ['tlsv1.3', 'tlsv1.2', 'tlsv1.1', tlsv1]).
+-define(ALL_AVAILABLE_VERSIONS, ['tlsv1.3', 'tlsv1.2', 'tlsv1.1', tlsv1, 'tlcpv1.1']).
 -define(ALL_AVAILABLE_DATAGRAM_VERSIONS, ['dtlsv1.2', dtlsv1]).
 %% Defines the default versions when not specified by an ssl option.
 -define(ALL_SUPPORTED_VERSIONS, ['tlsv1.3', 'tlsv1.2']).

@@ -152,6 +152,8 @@ get_internal_active_n(false) ->
 init_certs_keys(#{certs_keys := CertsKeys} = Opts, PemCache) ->
     Pairs = lists:map(fun(CertKey) -> init_cert_key_pair(CertKey, PemCache) end, CertsKeys),
     CertKeyGroups = group_pairs(Pairs),
+    io:format("DEBUG init_certs_keys Pairs: ~p~n", [Pairs]),
+    io:format("DEBUG init_certs_keys CertKeyGroups: ~P~n", [CertKeyGroups, 10]),
     prioritize_groups(CertKeyGroups, Opts).
 
 init_cert_key_pair(CertKey, PemCache) ->
@@ -239,6 +241,7 @@ prio_ecdsa(ECDSA, Curves) ->
     SignFunPairs = [Pair || Pair = #{private_key := #{sign_fun := _}} <- ECDSA],
     EnginePairs
         ++ SignFunPairs
+        ++ using_curve({namedCurve, {1,2,156,10197,1,301}}, ECDSA -- EnginePairs -- SignFunPairs, [])
         ++ lists:foldr(
             fun(Curve, AccIn) ->
                 CurveOid = pubkey_cert_records:namedCurves(Curve),
@@ -1905,7 +1908,7 @@ handle_cipher_option(Value, Versions)  when is_list(Value) ->
     catch
 	exit:_ ->
 	    option_error(ciphers, Value);
-	error:_->
+	error:_ ->
 	    option_error(ciphers, Value)
     end.
 
@@ -2124,6 +2127,8 @@ handle_possible_version_change(_, VersionsOpt, #{ciphers := Suites} = OrigSSLOpt
     FallbackSuites = ciphers_for_version(VersionsOpt, Suites, Record),
     filter_for_versions(VersionsOpt, OrigSSLOpts#{ciphers => FallbackSuites}).
 
+filter_for_versions(['tlcpv1.1'], OrigSSLOptions) ->
+    filter_for_versions(['tlsv1.2'], OrigSSLOptions);
 filter_for_versions(['tlsv1.3'], OrigSSLOptions) ->
     Opts = ?'PRE_TLS-1_3_ONLY_OPTIONS' ++ ?'TLS-1_0_ONLY_OPTIONS',
     maps:without(Opts, OrigSSLOptions);

@@ -314,6 +314,23 @@ key_exchange(client, _Version, {srp, PublicKey}) ->
 			  srp_a = PublicKey}
       };
 
+key_exchange(server, Version, {sm2, EncCertBin, HashSign, ClientRandom, ServerRandom, PrivateKey}) ->
+    EncCertLen = byte_size(EncCertBin),
+    EncParams = <<EncCertLen:24, EncCertBin/binary>>,
+    {HashAlgo, SignAlgo} = HashSign,
+    Msg = <<ClientRandom/binary, ServerRandom/binary, EncParams/binary>>,
+    %% Write Msg to a temp file and shell out to gmssl!
+    MsgFile = "/tmp/sm2_msg.bin",
+    SigFile = "/tmp/sm2_sig.bin",
+    file:write_file(MsgFile, Msg),
+    Cmd = "/usr/local/bin/gmssl sm2sign -key /shared/scripts/certs/sign.key.enc -pass 12345678 -id 1234567812345678 -in " ++ MsgFile ++ " -out " ++ SigFile ++ " > /tmp/sm2_out.log 2>&1",
+    os:cmd(Cmd),
+    {ok, Signature} = file:read_file(SigFile),
+    #server_key_params{params = EncParams,
+                       params_bin = <<>>,
+                       hashsign = HashSign,
+                       signature = Signature};
+
 key_exchange(server, Version, {dh, {PublicKey, _},
 			       #'DHParameter'{prime = P, base = G},
 			       HashSign, ClientRandom, ServerRandom, PrivateKey}) ->
@@ -1121,6 +1138,7 @@ cipher_suites(Suites, true) ->
 select_session(SuggestedSessionId, CipherSuites, HashSigns, SessIdTracker, Session0,
                Version, SslOpts, CertKeyAlts) ->
     CertKeyPairs = ssl_certificate:available_cert_key_pairs(CertKeyAlts, Version),
+    io:format("DEBUG CertKeyPairs: ~P~n", [CertKeyPairs, 10]),
     {SessionId, Resumed} = ssl_session:server_select_session(Version, SessIdTracker, SuggestedSessionId,
                                                              SslOpts, CertKeyPairs),
     case Resumed of
@@ -1265,7 +1283,15 @@ premaster_secret(#client_ecdhe_psk_identity{
 		    identity =  PSKIdentity,
 		    dh_public = PublicEcDhPoint}, PrivateEcDhKey, PSKLookup) ->
     PremasterSecret = premaster_secret(#'ECPoint'{point = PublicEcDhPoint}, PrivateEcDhKey),
-    psk_secret(PSKIdentity, PSKLookup, PremasterSecret).
+    psk_secret(PSKIdentity, PSKLookup, PremasterSecret);
+premaster_secret(EncSecret, sm2, _PrivateKey) ->
+    MsgFile = "/tmp/sm2_enc.bin",
+    DecFile = "/tmp/sm2_dec.bin",
+    file:write_file(MsgFile, EncSecret),
+    Cmd = "/usr/local/bin/gmssl sm2decrypt -key /shared/scripts/certs/enc.key.enc -pass 12345678 -in " ++ MsgFile ++ " -out " ++ DecFile ++ " > /tmp/sm2_dec.log 2>&1",
+    os:cmd(Cmd),
+    {ok, PMS} = file:read_file(DecFile),
+    PMS.
 premaster_secret(#client_dhe_psk_identity{
 		    identity =  PSKIdentity,
 		    dh_public = PublicDhKey}, PrivateKey, #'DHParameter'{} = Params, PSKLookup) ->
@@ -1277,6 +1303,14 @@ premaster_secret({psk, PSKIdentity}, PSKLookup) ->
     psk_secret(PSKIdentity, PSKLookup);
 premaster_secret(#'ECPoint'{} = ECPoint, #'ECPrivateKey'{} = ECDHKeys) ->
     public_key:compute_key(ECPoint, ECDHKeys);
+premaster_secret(EncSecret, #'ECPrivateKey'{} = _PrivateKey) when is_binary(EncSecret) ->
+    MsgFile = "/tmp/sm2_enc.bin",
+    DecFile = "/tmp/sm2_dec.bin",
+    file:write_file(MsgFile, EncSecret),
+    Cmd = "/usr/local/bin/gmssl sm2decrypt -key /shared/scripts/certs/enc.key.enc -pass 12345678 -in " ++ MsgFile ++ " -out " ++ DecFile ++ " > /tmp/sm2_dec.log 2>&1",
+    os:cmd(Cmd),
+    {ok, PMS} = file:read_file(DecFile),
+    PMS;
 premaster_secret(EncSecret, #'RSAPrivateKey'{} = RSAPrivateKey) ->
     try public_key:decrypt_private(EncSecret, RSAPrivateKey,
 				   [{rsa_pad, rsa_pkcs1_padding}])
@@ -2008,6 +2042,8 @@ select_hashsign_algs(undefined, ?rsaEncryption, ?TLS_1_2)  ->
     {sha, rsa};
 select_hashsign_algs(undefined,?'id-ecPublicKey', _) ->
     {sha, ecdsa};
+select_hashsign_algs(undefined, {1,2,156,10197,1,501}, _) ->
+    {sm3, ecdsa};
 select_hashsign_algs(undefined, ?rsaEncryption, _) ->
     {md5sha, rsa};
 select_hashsign_algs(undefined, ?'id-dsa', _) ->

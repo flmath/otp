@@ -180,7 +180,11 @@ cipher(?AES_CBC, CipherState, Mac, Fragment, Version) ->
 			 crypto:crypto_one_time(aes_128_cbc, Key, IV, T, true);
 		    (Key, IV, T) when byte_size(Key) =:= 32 ->
 			 crypto:crypto_one_time(aes_256_cbc, Key, IV, T, true)
-		 end, block_size(aes_128_cbc), CipherState, Mac, Fragment, Version).
+		 end, block_size(aes_128_cbc), CipherState, Mac, Fragment, Version);
+cipher(?SM4_CBC, CipherState, Mac, Fragment, Version) ->
+    block_cipher(fun(Key, IV, T) ->
+			 crypto:crypto_one_time(sm4_cbc, Key, IV, T, true)
+		 end, 16, CipherState, Mac, Fragment, Version).
 
 aead_encrypt(Type, Key, Nonce, Fragment, AdditionalData, TagLen) ->
     crypto:crypto_one_time_aead(aead_type(Type,byte_size(Key)), Key, Nonce, Fragment,
@@ -224,7 +228,7 @@ block_cipher(Fun, BlockSz, #cipher_state{key=Key, iv=IV} = CS0,
 
 block_cipher(Fun, BlockSz, #cipher_state{key=Key, iv=IV, state = IV_Cache0} = CS0,
 	     Mac, Fragment, Version)
-  when ?TLS_GT(Version, ?TLS_1_0)->
+  when ?TLS_GT(Version, ?TLS_1_0); Version == {1,1} ->
     IV_Size = byte_size(IV),
     <<NextIV:IV_Size/binary, IV_Cache/binary>> =
         case IV_Cache0 of
@@ -285,6 +289,10 @@ decipher(?AES_CBC, HashSz, CipherState, Fragment, Version, PaddingCheck) ->
                            crypto:crypto_one_time(aes_128_cbc, Key, IV, T, false);
 		      (Key, IV, T) when byte_size(Key) =:= 32 ->
                            crypto:crypto_one_time(aes_256_cbc, Key, IV, T, false)
+		   end, CipherState, HashSz, Fragment, Version, PaddingCheck);
+decipher(?SM4_CBC, HashSz, CipherState, Fragment, Version, PaddingCheck) ->
+    block_decipher(fun(Key, IV, T) ->
+                           crypto:crypto_one_time(sm4_cbc, Key, IV, T, false)
 		   end, CipherState, HashSz, Fragment, Version, PaddingCheck).
 
 block_decipher(Fun, #cipher_state{key=Key, iv=IV} = CipherState0,
@@ -338,6 +346,8 @@ all_suites(?TLS_1_1 = Version) ->
     suites(Version) ++ tls_legacy_suites(Version) ++ tls_v1:cbc_suites(Version);
 all_suites(?TLS_1_0 = Version) ->
     suites(Version) ++ tls_legacy_suites(Version) ++ tls_v1:cbc_suites(Version);
+all_suites({1,1} = Version) ->
+    suites(Version);
 all_suites(Version) ->
     dtls_v1:all_suites(Version).
 
@@ -363,6 +373,7 @@ anonymous_suites(Version) when ?TLS_1_X(Version) ->
 anonymous_suites(Version) when ?DTLS_1_X(Version) ->
     dtls_v1:anonymous_suites(Version).
 
+versions_included({1,1}) -> [{1,1}];
 versions_included(?TLS_1_0) -> [?TLS_1_0];
 versions_included(?TLS_1_1) -> [?TLS_1_1, ?TLS_1_0];
 versions_included(?TLS_1_2) -> [?TLS_1_2, ?TLS_1_1, ?TLS_1_0];
@@ -454,7 +465,9 @@ crypto_support_filters() ->
 
 is_acceptable_keyexchange(KeyExchange, _Algos) when KeyExchange == psk;
                                                     KeyExchange == null;
-                                                    KeyExchange == any ->
+                                                    KeyExchange == any;
+                                                    KeyExchange == sm2_dhe;
+                                                    KeyExchange == sm2 ->
     true;
 is_acceptable_keyexchange(KeyExchange, Algos) when KeyExchange == dh_anon;
                                                    KeyExchange == dhe_psk ->
@@ -500,17 +513,20 @@ is_acceptable_cipher(aes_128_ccm_8, Algos) ->
     proplists:get_bool(aes_128_ccm, Algos);
 is_acceptable_cipher(aes_256_ccm_8, Algos) ->
     proplists:get_bool(aes_256_ccm, Algos);
+is_acceptable_cipher(Cipher, _Algos) when Cipher == null;
+                                            Cipher == sm4_cbc ->
+    true;
 is_acceptable_cipher(Cipher, Algos) ->
     proplists:get_bool(Cipher, Algos).
 
-is_acceptable_hash(null, _Algos) ->
+is_acceptable_hash(Hash, _Algos) when Hash == null; Hash == sm3 ->
     true;
 is_acceptable_hash(aead, _Algos) ->
     true;
 is_acceptable_hash(Hash, Algos) ->
     proplists:get_bool(Hash, Algos).
 
-is_acceptable_prf(default_prf, _) ->
+is_acceptable_prf(Prf, _Algos) when Prf == default_prf; Prf == sm3 ->
     true;
 is_acceptable_prf(Prf, Algos) ->
     proplists:get_bool(Prf, Algos).
@@ -563,7 +579,9 @@ hash_size(sha256) ->
 hash_size(sha384) ->
     48;
 hash_size(sha512) ->
-    64.
+    64;
+hash_size(sm3) ->
+    32.
 
 %% Handle RSA and RSA_PSS_RSAE
 is_supported_sign({Hash, rsa} = SignAlgo, HashSigns) -> %% ?rsaEncryption cert signalgo used
@@ -793,6 +811,8 @@ bulk_cipher_algorithm(Cipher) when Cipher == aes_128_ccm;
 bulk_cipher_algorithm(Cipher) when Cipher == aes_128_ccm_8;
 				   Cipher == aes_256_ccm_8 ->
     ?AES_CCM_8;
+bulk_cipher_algorithm(sm4_cbc) ->
+    ?SM4_CBC;
 bulk_cipher_algorithm(chacha20_poly1305) ->
     ?CHACHA20_POLY1305.
 
@@ -803,7 +823,8 @@ type(Cipher) when Cipher == null;
 type(Cipher) when Cipher == des_cbc;
 		  Cipher == '3des_ede_cbc';
 		  Cipher == aes_128_cbc;
-		  Cipher == aes_256_cbc ->
+		  Cipher == aes_256_cbc;
+		  Cipher == sm4_cbc ->
     ?BLOCK;
 type(Cipher) when Cipher == aes_128_gcm;
 		  Cipher == aes_256_gcm;
@@ -826,6 +847,8 @@ key_material(aes_128_cbc) ->
     16;
 key_material(aes_256_cbc) ->
     32;
+key_material(sm4_cbc) ->
+    16;
 key_material(aes_128_gcm) ->
     16;
 key_material(aes_128_ccm) ->
@@ -862,6 +885,7 @@ block_size(Cipher) when Cipher == des_cbc;
     8;
 block_size(Cipher) when Cipher == aes_128_cbc;
 			Cipher == aes_256_cbc;
+			Cipher == sm4_cbc;
 			Cipher == aes_128_gcm;
 			Cipher == aes_256_gcm;
                         Cipher == aes_128_ccm;
@@ -897,18 +921,22 @@ hash_algorithm(?SHA224) -> sha224;
 hash_algorithm(?SHA256) -> sha256;
 hash_algorithm(?SHA384) -> sha384;
 hash_algorithm(?SHA512) -> sha512;
-hash_algorithm(Other)  when is_integer(Other), Other >= 7, Other =< 223 -> unassigned;
+hash_algorithm(sm3) -> ?SM3;
+hash_algorithm(?SM3) -> sm3;
+hash_algorithm(Other)  when is_integer(Other), Other >= 8, Other =< 223 -> unassigned;
 hash_algorithm(Other)  when is_integer(Other), Other >= 224, Other =< 255 -> Other.
 
 sign_algorithm(anon)  -> ?ANON;
 sign_algorithm(rsa)   -> ?RSA;
 sign_algorithm(dsa)   -> ?DSA;
 sign_algorithm(ecdsa) -> ?ECDSA;
+sign_algorithm(sm2)   -> ?SM2;
 sign_algorithm(?ANON) -> anon;
 sign_algorithm(?RSA) -> rsa;
 sign_algorithm(?DSA) -> dsa;
 sign_algorithm(?ECDSA) -> ecdsa;
-sign_algorithm(Other) when is_integer(Other), Other >= 4, Other =< 223 -> unassigned;
+sign_algorithm(?SM2) -> sm2;
+sign_algorithm(Other) when is_integer(Other), Other >= 9, Other =< 223 -> unassigned;
 sign_algorithm(Other) when is_integer(Other), Other >= 224, Other =< 255 -> Other.
 
 
@@ -1021,7 +1049,7 @@ generic_block_cipher_from_bin(?TLS_1_0, T, IV, HashSize)->
 			  next_iv = IV};
 
 generic_block_cipher_from_bin(Version, T, IV, HashSize)
-  when Version == ?TLS_1_1; Version == ?TLS_1_2 ->
+  when Version == ?TLS_1_1; Version == ?TLS_1_2; Version == {1,1} ->
     Sz1 = byte_size(T) - 1,
     <<_:Sz1/binary, ?BYTE(PadLength)>> = T,
     IVLength = byte_size(IV),
@@ -1233,6 +1261,8 @@ ec_keyed_suites(Ciphers) ->
     filter_kex(Ciphers, fun (ecdh_ecdsa)  -> true;
                             (ecdh_rsa)    -> true;
                             (ecdhe_ecdsa) -> true;
+                            (sm2)         -> true;
+                            (sm2_dhe)     -> true;
                             (_)           -> false
                         end).
 
@@ -1246,6 +1276,7 @@ ec_ecdh_suites(Ciphers)->
 ec_ecdhe_suites(Ciphers) ->
     filter_kex(Ciphers, fun(ecdhe_ecdsa) -> true;
                            (ecdhe_rsa)   -> true;
+                           (sm2_dhe)     -> true;
                            (_)           -> false
                         end).
 %% RSA Certs key usage digitalSignature

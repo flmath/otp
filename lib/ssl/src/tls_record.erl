@@ -258,6 +258,8 @@ decode_cipher_text(_, #ssl_tls{version = Version,
 %%--------------------------------------------------------------------
 protocol_version_name('tlsv1.3') ->
     ?TLS_1_3;
+protocol_version_name('tlcpv1.1') ->
+    {1, 1};
 protocol_version_name('tlsv1.2') ->
     ?TLS_1_2;
 protocol_version_name('tlsv1.1') ->
@@ -278,6 +280,8 @@ protocol_version_name(sslv2) -> %% Backwards compatibility
 
 protocol_version(?TLS_1_3) ->
     'tlsv1.3';
+protocol_version({1, 1}) ->
+    'tlcpv1.1';
 protocol_version(?TLS_1_2) ->
     'tlsv1.2';
 protocol_version(?TLS_1_1) ->
@@ -410,6 +414,8 @@ sufficient_crypto_support('tlsv1.3') ->
      are_algorithms_supported(crypto:supports(curves), [secp256r1]) andalso
      are_algorithms_supported(crypto:supports(rsa_opts),
                               [rsa_pkcs1_padding, rsa_pkcs1_pss_padding]));
+sufficient_crypto_support('tlcpv1.1') ->
+    true;
 sufficient_crypto_support(Version) ->
     sufficient_crypto_support(protocol_version(Version)).
 
@@ -528,6 +534,7 @@ validate_tls_record_version(_Versions, Q, _MaxFragLen, _Downgrade, Acc, Type, un
     {lists:reverse(Acc),
      {#ssl_tls{type = Type, version = undefined, fragment = undefined}, Q}};
 validate_tls_record_version(Versions, Q, MaxFragLen, Downgrade, Acc, Type, Version, Length) when is_list(Versions) ->
+    io:format("DEBUG validate_tls_record_version: Version=~p, Versions=~p~n", [Version, Versions]),
     case is_acceptable_version(Version, Versions) of
         true ->
             validate_tls_record_length(Versions, Q, MaxFragLen, Downgrade, Acc, Type, Version, Length);

@@ -489,6 +489,25 @@ certify_server(#state{static_env = #static_env{cert_db = CertDbHandle,
 
 key_exchange(#state{handshake_env = #handshake_env{kex_algorithm = rsa}} = State,_) ->
     State;
+key_exchange(#state{handshake_env = #handshake_env{kex_algorithm = sm2,
+                                                   hashsign_algorithm = HashSignAlgo},
+                    connection_env = #connection_env{negotiated_version = Version},
+                    session = #session{private_key = PrivateKey, own_certificates = OwnCerts},
+                    connection_states = ConnectionStates0} = State0, Connection) ->
+    %% For TLCP, own_certificates should contain [SignCert, EncryptCert, ...]
+    %% We need to send the EncryptCert in the ServerKeyExchange message, signed with the PrivateKey.
+    [_, EncCert | _] = OwnCerts,
+    #{security_parameters := SecParams} =
+        ssl_record:pending_connection_state(ConnectionStates0, read),
+    #security_parameters{client_random = ClientRandom,
+                         server_random = ServerRandom} = SecParams,
+    Msg = ssl_handshake:key_exchange(server, ssl:tls_version(Version),
+                                     {sm2, EncCert,
+                                      HashSignAlgo, ClientRandom,
+                                      ServerRandom,
+                                      PrivateKey}),
+    #state{handshake_env = HsEnv} = State = Connection:queue_handshake(Msg, State0),
+    State#state{handshake_env = HsEnv#handshake_env{kex_keys = EncCert}};
 key_exchange(#state{handshake_env = #handshake_env{kex_algorithm = KexAlg,
                                                    diffie_hellman_params =
                                                        #'DHParameter'{} = Params,
@@ -713,6 +732,27 @@ certify_client_key_exchange(#client_diffie_hellman_public{dh_public = ClientPubl
 			    Connection) ->
     PremasterSecret = ssl_handshake:premaster_secret(ClientPublicDhKey,
                                                      ServerDhPrivateKey, Params),
+    tls_dtls_gen_connection:calculate_master_secret(PremasterSecret, State,
+                                                    Connection, certify,
+                                                    client_kex_next_state(CCStatus));
+
+certify_client_key_exchange(#client_ec_diffie_hellman_public{dh_public = ClientPublicEcDhPoint},
+			    #state{handshake_env =
+                                       #handshake_env{kex_keys = sm2_dhe_ephemeral,
+                                                      client_certificate_status = CCStatus},
+                                   session = #session{peer_certificate = PeerCert}
+                                  } = State, Connection) ->
+    file:write_file("/shared/client_eph_pub.bin", ClientPublicEcDhPoint),
+    
+    DerCert = PeerCert,
+    DecodedCert = public_key:pkix_decode_cert(DerCert, otp),
+    TBSCert = DecodedCert#'OTPCertificate'.tbsCertificate,
+    SPKI = TBSCert#'OTPTBSCertificate'.subjectPublicKeyInfo,
+    {0, ClientStaticPubKeyBin} = SPKI#'OTPSubjectPublicKeyInfo'.subjectPublicKey,
+    file:write_file("/shared/client_enc_pub.bin", ClientStaticPubKeyBin),
+    
+    os:cmd("LD_LIBRARY_PATH=/usr/local/bin /shared/gmssl_ecdh_compute /shared/certs/enc.key /shared/client_enc_pub.bin /shared/eph_priv.pem /shared/client_eph_pub.bin /shared/shared_secret.bin"),
+    {ok, PremasterSecret} = file:read_file("/shared/shared_secret.bin"),
     tls_dtls_gen_connection:calculate_master_secret(PremasterSecret, State,
                                                     Connection, certify,
                                                     client_kex_next_state(CCStatus));

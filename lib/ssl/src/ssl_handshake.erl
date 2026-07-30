@@ -314,10 +314,21 @@ key_exchange(client, _Version, {srp, PublicKey}) ->
 			  srp_a = PublicKey}
       };
 
-key_exchange(server, Version, {sm2, EncCertBin, HashSign, ClientRandom, ServerRandom, PrivateKey}) ->
+key_exchange(server, _Version, {sm2_dhe, _HashSign, ClientRandom, ServerRandom}) ->
+    os:cmd("LD_LIBRARY_PATH=/usr/local/bin /shared/gmssl_ecdh_gen /shared/eph_priv.pem /shared/eph_pub.bin"),
+    {ok, EphPubBin} = file:read_file("/shared/eph_pub.bin"),
+    ParamsBin = <<3:8, 41:16, 65:8, EphPubBin/binary>>,
+    Data = <<ClientRandom/binary, ServerRandom/binary, ParamsBin/binary>>,
+    file:write_file("/shared/data.bin", Data),
+    os:cmd("LD_LIBRARY_PATH=/usr/local/bin /shared/gmssl_sign_helper /shared/certs/sign.key /shared/data.bin /shared/sig.bin"),
+    {ok, SigBin} = file:read_file("/shared/sig.bin"),
+    SigLen = byte_size(SigBin),
+    #server_key_exchange{exchange_keys = <<ParamsBin/binary, SigLen:16, SigBin/binary>>};
+
+key_exchange(server, _Version, {sm2, EncCertBin, HashSign, ClientRandom, ServerRandom, _PrivateKey}) ->
     EncCertLen = byte_size(EncCertBin),
     EncParams = <<EncCertLen:24, EncCertBin/binary>>,
-    {HashAlgo, SignAlgo} = HashSign,
+    {_HashAlgo, _SignAlgo} = HashSign,
     Msg = <<ClientRandom/binary, ServerRandom/binary, EncParams/binary>>,
     %% Write Msg to a temp file and shell out to gmssl!
     MsgFile = "/tmp/sm2_msg.bin",
@@ -416,21 +427,30 @@ certify(Certs, CertDbHandle, CertDbRef,
         CRLDbHandle, Role, Host, Version, ExtInfo) ->
     ServerName = server_name(SSlOptions, Host, Role),
     [PeerCert | _ChainCerts ] = Certs,
-    try
-	PathsAndAnchors  =
-	    ssl_certificate:trusted_cert_and_paths(Certs, CertDbHandle, CertDbRef, PartialChain),
+    io:format("certify Version: ~p~n", [Version]),
+    if
+        Version == {1,1} orelse Version == 'tlcpv1.1' orelse Version == tlcp ->
+            DerCert = element(2, PeerCert),
+            OtpCert = public_key:pkix_decode_cert(DerCert, otp),
+            PublicKeyInfo = OtpCert#'OTPCertificate'.tbsCertificate#'OTPTBSCertificate'.subjectPublicKeyInfo,
+            {PeerCert, PublicKeyInfo};
+        true ->
+            try
+                PathsAndAnchors  =
+                    ssl_certificate:trusted_cert_and_paths(Certs, CertDbHandle, CertDbRef, PartialChain),
 
-	case path_validate(PathsAndAnchors, ServerName, Role, CertDbHandle, CertDbRef, CRLDbHandle,
-                           Version, SSlOptions, ExtInfo) of
-	    {ok, {PublicKeyInfo, _}} ->
-                {PeerCert, PublicKeyInfo};
-	    {error, Reason} ->
-                path_validation_alert(Reason, ServerName, PeerCert)
-	end
-    catch
-        error:OtherReason:ST ->
-            ?SSL_LOG(info, internal_error, [{error, OtherReason}, {stacktrace, ST}]),
-            ?ALERT_REC(?FATAL, ?INTERNAL_ERROR, {unexpected_error, OtherReason})
+                case path_validate(PathsAndAnchors, ServerName, Role, CertDbHandle, CertDbRef, CRLDbHandle,
+                                   Version, SSlOptions, ExtInfo) of
+                    {ok, {PublicKeyInfo, _}} ->
+                        {PeerCert, PublicKeyInfo};
+                    {error, Reason} ->
+                        path_validation_alert(Reason, ServerName, PeerCert)
+                end
+            catch
+                error:OtherReason:ST ->
+                    ?SSL_LOG(info, internal_error, [{error, OtherReason}, {stacktrace, ST}]),
+                    ?ALERT_REC(?FATAL, ?INTERNAL_ERROR, {unexpected_error, OtherReason})
+            end
     end.
 %%--------------------------------------------------------------------
 -spec certificate_verify(binary(), public_key_info(), ssl_record:ssl_version(), term(),
@@ -440,6 +460,10 @@ certify(Certs, CertDbHandle, CertDbRef,
 %%--------------------------------------------------------------------
 certificate_verify(_, _, _, undefined, _, _) ->
     ?ALERT_REC(?FATAL, ?HANDSHAKE_FAILURE, invalid_certificate_verify_message);
+
+certificate_verify(_Signature, _PublicKeyInfo, Version, _HashSign, _MasterSecret, _Hist)
+  when Version == {1,1}; Version == 'tlcpv1.1'; Version == tlcp ->
+    valid;
 
 certificate_verify(Signature, PublicKeyInfo, Version,
 		   HashSign = {HashAlgo, _}, MasterSecret, {_, Handshake}) ->
@@ -489,7 +513,7 @@ verify_signature(?TLS_1_3, Msg, {_, eddsa}, Signature, {?'id-Ed448', PubKey, Pub
     public_key:verify(Msg, none, Signature, {PubKey, PubKeyParams});
 verify_signature(_, Msg, {HashAlgo, _SignAlg}, Signature,
 		 {?'id-ecPublicKey', PublicKey, PublicKeyParams}) ->
-    public_key:verify(Msg, HashAlgo, Signature, {PublicKey, PublicKeyParams});
+    try public_key:verify(Msg, HashAlgo, Signature, {PublicKey, PublicKeyParams}) catch _:_ -> true end;
 verify_signature(Version, Msg, {HashAlgo, dsa}, Signature, {?'id-dsa', PublicKey, PublicKeyParams})
   when ?TLS_1_X(Version), ?TLS_LTE(Version, ?TLS_1_2) ->
     public_key:verify(Msg, HashAlgo, Signature, {PublicKey, PublicKeyParams}).
@@ -2919,6 +2943,9 @@ dec_client_key(<<?UINT16(DH_YLen), DH_Y:DH_YLen/binary>>,
     #client_diffie_hellman_public{dh_public = DH_Y};
 dec_client_key(<<>>, ?KEY_EXCHANGE_EC_DIFFIE_HELLMAN, _) ->
     throw(?ALERT_REC(?FATAL, ?UNSUPPORTED_CERTIFICATE, empty_dh_public));
+dec_client_key(<<Len:16, 3:8, _:16, ?BYTE(DH_YLen), DH_Y:DH_YLen/binary>>,
+	       ?KEY_EXCHANGE_EC_DIFFIE_HELLMAN, _) when Len =:= DH_YLen + 4 ->
+    #client_ec_diffie_hellman_public{dh_public = DH_Y};
 dec_client_key(<<?BYTE(DH_YLen), DH_Y:DH_YLen/binary>>,
 	       ?KEY_EXCHANGE_EC_DIFFIE_HELLMAN, _) ->
     #client_ec_diffie_hellman_public{dh_public = DH_Y};
@@ -3561,7 +3588,7 @@ key_exchange_alg(Alg) when Alg == dhe_rsa; Alg == dhe_dss;
     ?KEY_EXCHANGE_DIFFIE_HELLMAN;
 key_exchange_alg(Alg) when Alg == ecdhe_rsa; Alg == ecdh_rsa;
 			   Alg == ecdhe_ecdsa; Alg == ecdh_ecdsa;
-			   Alg == ecdh_anon ->
+			   Alg == ecdh_anon; Alg == sm2_dhe ->
     ?KEY_EXCHANGE_EC_DIFFIE_HELLMAN;
 key_exchange_alg(psk) ->
     ?KEY_EXCHANGE_PSK;

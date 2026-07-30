@@ -278,7 +278,7 @@ certify(Type, Event, State) ->
 wait_cert_verify(info, Event, State) ->
     tls_gen_connection:gen_info(Event, ?STATE(wait_cert_verify), State);
 wait_cert_verify(internal, #certificate_verify{signature = Signature,
-                                               hashsign_algorithm = CertHashSign},
+                                               hashsign_algorithm = CertHashSign} = Msg,
                  #state{static_env = #static_env{protocol_cb = Connection},
                         handshake_env = #handshake_env{tls_handshake_history = Hist,
                                                        kex_algorithm = KexAlg,
@@ -287,22 +287,31 @@ wait_cert_verify(internal, #certificate_verify{signature = Signature,
                         connection_env = #connection_env{negotiated_version = Version},
                         session = #session{master_secret = MasterSecret} = Session0
                        } = State) ->
+    io:format("DEBUG wait_cert_verify called with: ~p~n", [Msg]),
 
-    TLSVersion = ssl:tls_version(Version),
-    %% Use negotiated value if TLS-1.2 otherwise return default
-    HashSign = tls_dtls_gen_connection:negotiated_hashsign(CertHashSign, KexAlg,
-                                                           PubKeyInfo, TLSVersion),
-    case ssl_handshake:certificate_verify(Signature, PubKeyInfo,
-					  TLSVersion, HashSign, MasterSecret, Hist) of
-	valid ->
-            HsEnv = HsEnv0#handshake_env{client_certificate_status = verified},
-	    Connection:next_event(cipher, no_record,
-				  State#state{handshake_env = HsEnv,
-                                              session = Session0#session{sign_alg = HashSign}});
-	#alert{} = Alert ->
-            ssl_gen_statem:handle_own_alert(Alert, ?STATE(wait_cert_verify), State)
+    try
+        TLSVersion = ssl:tls_version(Version),
+        %% Use negotiated value if TLS-1.2 otherwise return default
+        HashSign = tls_dtls_gen_connection:negotiated_hashsign(CertHashSign, KexAlg,
+                                                               PubKeyInfo, TLSVersion),
+        io:format("DEBUG wait_cert_verify HashSign: ~p~n", [HashSign]),
+        case ssl_handshake:certificate_verify(Signature, PubKeyInfo,
+                                              TLSVersion, HashSign, MasterSecret, Hist) of
+            valid ->
+                HsEnv = HsEnv0#handshake_env{client_certificate_status = verified},
+                Connection:next_event(cipher, no_record,
+                                      State#state{handshake_env = HsEnv,
+                                                  session = Session0#session{sign_alg = HashSign}});
+            #alert{} = Alert ->
+                ssl_gen_statem:handle_own_alert(Alert, ?STATE(wait_cert_verify), State)
+        end
+    catch
+        Class:Reason:ST ->
+            io:format("DEBUG wait_cert_verify CRASH ~p:~p~n~p~n", [Class, Reason, ST]),
+            throw(Reason)
     end;
 wait_cert_verify(Type, Event, State) ->
+    io:format("DEBUG wait_cert_verify catch-all Type: ~p Event: ~p~n", [Type, Event]),
     ssl_gen_statem:handle_common_event(Type, Event, ?STATE(wait_cert_verify), State).
 
 %%--------------------------------------------------------------------
@@ -312,6 +321,7 @@ wait_cert_verify(Type, Event, State) ->
 cipher(info, Event, State) ->
     tls_gen_connection:gen_info(Event, ?STATE(cipher), State);
 cipher(Type, Event, State) ->
+    io:format("DEBUG tls_server_connection:cipher got Type: ~p Event: ~p~n", [Type, Event]),
     gen_state(?STATE(cipher), Type, Event, State).
 
 %%--------------------------------------------------------------------
@@ -460,6 +470,7 @@ choose_tls_fsm(_, _) ->
 gen_state(StateName, Type, Event, State) ->
     try tls_dtls_server_connection:StateName(Type, Event, State)
     catch throw:#alert{} = Alert ->
+            io:format("DEBUG wait_cert_verify caught alert: ~p~n", [Alert]),
             ssl_gen_statem:handle_own_alert(Alert, StateName, State);
           _:Reason:ST ->
             io:format("DEBUG unexpected_error CRASH: ~p, ST: ~p~n", [Reason, ST]),

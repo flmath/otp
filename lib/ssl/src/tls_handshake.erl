@@ -457,6 +457,7 @@ get_tls_handshakes_aux(Version, <<?BYTE(Type), ?UINT24(Length),
             get_tls_handshakes_aux(Version, Rest, Opts, [{Handshake,Raw} | Acc])
     catch
         error:Reason:ST ->
+            io:format("DEBUG decode_handshake CRASH Version: ~p Type: ~p Body: ~p Reason: ~p ST: ~p~n", [Version, Type, Body, Reason, ST]),
             ?SSL_LOG(info, handshake_error, [{reason,Reason}, {stacktrace, ST}]),
             throw(?ALERT_REC(?FATAL, ?DECODE_ERROR, handshake_decode_error))
     end;

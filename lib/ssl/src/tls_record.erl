@@ -240,9 +240,11 @@ decode_cipher_text(_, #ssl_tls{version = Version,
                                                 ReadState1#{sequence_number => Seq + 1}},
 		    {CipherTextRecord#ssl_tls{fragment = PlainFragment}, ConnnectionStates};
 		false ->
+                    io:format("DEBUG decode_cipher_text BAD_RECORD_MAC Mac: ~p, MacHash: ~p~n", [Mac, MacHash]),
                     ?ALERT_REC(?FATAL, ?BAD_RECORD_MAC)
 	    end;
         #alert{} = Alert ->
+            io:format("DEBUG decode_cipher_text decipher returned Alert: ~p~n", [Alert]),
 	    Alert
     end.
 

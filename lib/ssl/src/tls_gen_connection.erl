@@ -478,6 +478,7 @@ handle_protocol_record(#ssl_tls{type = ?HANDSHAKE, fragment = Data}, StateName,
                 end
         end
     catch throw:#alert{} = Alert ->
+            io:format("DEBUG handle_protocol_record caught alert: ~p~n", [Alert]),
             ssl_gen_statem:handle_own_alert(Alert, StateName, State0)
     end;
 %%% TLS record protocol level change cipher messages
@@ -672,6 +673,7 @@ next_tls_record(Data, StateName,
                                                             tls_cipher_texts = CT1}, State);
 
 	#alert{} = Alert ->
+            io:format("DEBUG tls_gen_connection handle_info returning alert: ~p~n", [Alert]),
 	    handle_record_alert(Alert, State)
     end.
 

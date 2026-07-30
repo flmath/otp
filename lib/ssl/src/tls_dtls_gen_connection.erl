@@ -196,6 +196,9 @@ initial_state(Role, Sender, Tab, Host, Port, Socket, {SSLOptions, SocketOptions,
                             }
       }.
 
+negotiated_hashsign(undefined, KexAlg, PubKeyInfo, {1,1} = Version) ->
+    %% TLCP always uses SM3 and SM2 for signatures
+    {sm3, sm2};
 negotiated_hashsign(undefined, KexAlg, PubKeyInfo, Version) ->
     %% Not negotiated choose default
     case is_anonymous(KexAlg) of
@@ -344,7 +347,12 @@ cipher(internal, #change_cipher_spec{type = <<1>>},
     Connection:next_event(?STATE(cipher), no_record,
                           State#state{handshake_env = HsEnv#handshake_env{expecting_finished = true},
                                       connection_states = ConnectionStates});
+cipher(internal, #change_cipher_spec{type = <<1>>} = CCS,
+       #state{handshake_env = #handshake_env{expecting_finished = true} = HsEnv} = State) ->
+    io:format("DEBUG cipher received ChangeCipherSpec BUT expecting_finished = true!~n"),
+    ssl_gen_statem:handle_common_event(internal, CCS, ?STATE(cipher), State);
 cipher(Type, Event, State) ->
+    io:format("DEBUG tls_dtls_gen_connection:cipher got Type: ~p Event: ~p~n", [Type, Event]),
     ssl_gen_statem:handle_common_event(Type, Event, ?STATE(cipher), State).
 
 %%--------------------------------------------------------------------

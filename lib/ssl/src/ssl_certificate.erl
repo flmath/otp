@@ -544,7 +544,7 @@ ext_keyusage_includes_any(KeyUse) ->
 
 verify_cert_signer(BinCert, SignerTBSCert) ->
     PublicKey = public_key(SignerTBSCert#'OTPTBSCertificate'.subjectPublicKeyInfo),
-    public_key:pkix_verify(BinCert, PublicKey).
+    try public_key:pkix_verify(BinCert, PublicKey) catch _:_ -> false end.
 
 public_key(#'OTPSubjectPublicKeyInfo'{algorithm = #'PublicKeyAlgorithm'{algorithm = ?'id-ecPublicKey',
 									parameters = Params},

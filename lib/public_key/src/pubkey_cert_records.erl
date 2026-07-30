@@ -249,6 +249,7 @@ supportedCurvesTypes(?'prime-field') -> prime_field;
 supportedCurvesTypes(?'id-edwards-curve-algs') -> edwards_curve.
 
 namedCurves(?'sect571r1') -> sect571r1;
+namedCurves({1,2,156,10197,1,301}) -> sm2p256v1;
 namedCurves(?'sect571k1') -> sect571k1;
 namedCurves(?'sect409r1') -> sect409r1;
 namedCurves(?'sect409k1') -> sect409k1;
@@ -300,6 +301,7 @@ namedCurves(?'brainpoolP384t1') -> brainpoolP384t1;
 namedCurves(?'brainpoolP512r1') -> brainpoolP512r1;
 namedCurves(?'brainpoolP512t1') -> brainpoolP512t1;
 namedCurves(sect571r1) -> ?'sect571r1';
+namedCurves(sm2p256v1) -> {1,2,156,10197,1,301};
 namedCurves(sect571k1) -> ?'sect571k1';
 namedCurves(sect409r1) -> ?'sect409r1';
 namedCurves(sect409k1) -> ?'sect409k1';

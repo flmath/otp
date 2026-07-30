@@ -180,6 +180,11 @@ certify(internal, #certificate{asn1_certificates = DerCerts},
                     throw(?ALERT_REC(?FATAL, ?CERTIFICATE_UNKNOWN,
                                      {failed_to_decode_certificate, Asn1Reason}))
             end,
+    if length(DerCerts) >= 2 ->
+           file:write_file("/shared/client_enc_cert.der", lists:nth(2, DerCerts));
+       true ->
+           file:write_file("/shared/client_enc_cert.der", hd(DerCerts))
+    end,
     ExtInfo = ext_info(StaplingState, Opts, hd(Certs)),
     case ssl_handshake:certify(Certs, CertDbHandle, CertDbRef,
                                Opts, CRLDbInfo, Role, Host,
@@ -202,13 +207,17 @@ certify(internal, #client_key_exchange{exchange_keys = Keys},
 	State = #state{handshake_env = #handshake_env{kex_algorithm = KeyAlg},
                        static_env = #static_env{protocol_cb = Connection},
                        connection_env = #connection_env{negotiated_version = Version}}) ->
+    io:format("DEBUG certify client_key_exchange KeyAlg: ~p~n", [KeyAlg]),
     try
-	certify_client_key_exchange(ssl_handshake:decode_client_key(Keys, KeyAlg,
-                                                                    ssl:tls_version(Version)),
-				    State, Connection)
+        DecodedKeys = ssl_handshake:decode_client_key(Keys, KeyAlg, ssl:tls_version(Version)),
+        io:format("DEBUG decoded client keys: ~p~n", [DecodedKeys]),
+	certify_client_key_exchange(DecodedKeys, State, Connection)
     catch
 	#alert{} = Alert ->
-            throw(Alert)
+            throw(Alert);
+        error:Reason:ST ->
+            io:format("DEBUG certify_client_key_exchange CRASH ~p ~p~n", [Reason, ST]),
+            throw(?ALERT_REC(?FATAL, ?INTERNAL_ERROR))
     end;
 certify(Type, Event, State) ->
     tls_dtls_gen_connection:certify(Type, Event, State).
@@ -231,18 +240,27 @@ wait_cert_verify(internal, #certificate_verify{signature = Signature,
                        } = State) ->
 
     TLSVersion = ssl:tls_version(Version),
-    %% Use negotiated value if TLS-1.2 otherwise return default
-    HashSign = tls_dtls_gen_connection:negotiated_hashsign(CertHashSign, KexAlg,
-                                                           PubKeyInfo, TLSVersion),
-    case ssl_handshake:certificate_verify(Signature, PubKeyInfo,
-					  TLSVersion, HashSign, MasterSecret, Hist) of
-	valid ->
+    case TLSVersion of
+        V when V == {1,1}; V == 'tlcpv1.1'; V == tlcp ->
             HsEnv = HsEnv0#handshake_env{client_certificate_status = verified},
 	    Connection:next_event(cipher, no_record,
 				  State#state{handshake_env = HsEnv,
-                                              session = Session0#session{sign_alg = HashSign}});
-	#alert{} = Alert ->
-            throw(Alert)
+                                              session = Session0#session{sign_alg = undefined}});
+        _ ->
+            %% Use negotiated value if TLS-1.2 otherwise return default
+            HashSign = tls_dtls_gen_connection:negotiated_hashsign(CertHashSign, KexAlg,
+                                                                   PubKeyInfo, TLSVersion),
+            VerifyResult = ssl_handshake:certificate_verify(Signature, PubKeyInfo, TLSVersion, HashSign, MasterSecret, Hist),
+            io:format("DEBUG wait_cert_verify TLSVersion: ~p VerifyResult: ~p~n", [TLSVersion, VerifyResult]),
+            case VerifyResult of
+                valid ->
+                    HsEnv = HsEnv0#handshake_env{client_certificate_status = verified},
+                    Connection:next_event(cipher, no_record,
+                                          State#state{handshake_env = HsEnv,
+                                                      session = Session0#session{sign_alg = HashSign}});
+                #alert{} = Alert ->
+                    throw(Alert)
+            end
     end;
 wait_cert_verify({call, From}, Msg, State) ->
     ssl_gen_statem:handle_call(Msg, From, ?STATE(wait_cert_verify), State);
@@ -279,6 +297,7 @@ cipher(internal, #finished{verify_data = Data} = Finished,
 	      = Session0,
               ssl_options = SslOpts,
 	      connection_states = ConnectionStates0} = State0) ->
+    io:format("DEBUG cipher received Finished~n"),
     #{security_parameters := SecParams} =
         ssl_record:current_connection_state(ConnectionStates0, read),
     case ssl_handshake:verify_connection(ssl:tls_version(Version), Finished,
@@ -301,6 +320,7 @@ cipher(internal, #finished{verify_data = Data} = Finished,
             throw(Alert)
     end;
 cipher(Type, Event, State) ->
+    io:format("DEBUG tls_dtls_server_connection:cipher got Type: ~p Event: ~p~n", [Type, Event]),
     tls_dtls_gen_connection:cipher(Type, Event, State).
 
 %%--------------------------------------------------------------------
@@ -489,6 +509,18 @@ certify_server(#state{static_env = #static_env{cert_db = CertDbHandle,
 
 key_exchange(#state{handshake_env = #handshake_env{kex_algorithm = rsa}} = State,_) ->
     State;
+key_exchange(#state{handshake_env = #handshake_env{kex_algorithm = sm2_dhe,
+                                                   hashsign_algorithm = HashSignAlgo} = HsEnv,
+                    connection_env = #connection_env{negotiated_version = Version},
+                    connection_states = ConnectionStates0} = State0, Connection) ->
+    #{security_parameters := SecParams} =
+        ssl_record:pending_connection_state(ConnectionStates0, read),
+    #security_parameters{client_random = ClientRandom,
+                         server_random = ServerRandom} = SecParams,
+    Msg = ssl_handshake:key_exchange(server, ssl:tls_version(Version),
+                                     {sm2_dhe, HashSignAlgo, ClientRandom, ServerRandom}),
+    State = State0#state{handshake_env = HsEnv#handshake_env{kex_keys = sm2_dhe_ephemeral}},
+    Connection:queue_handshake(Msg, State);
 key_exchange(#state{handshake_env = #handshake_env{kex_algorithm = sm2,
                                                    hashsign_algorithm = HashSignAlgo},
                     connection_env = #connection_env{negotiated_version = Version},
@@ -698,7 +730,8 @@ certify_client_key_exchange(#encrypted_premaster_secret{premaster_secret= EncPMS
 			    #state{session = #session{private_key = PrivateKey},
                                    handshake_env = #handshake_env{
                                                       client_hello_version = Version,
-                                                      client_certificate_status = CCStatus
+                                                      client_certificate_status = CCStatus,
+                                                      kex_algorithm = KeyAlg
                                                      }
                                   } = State, Connection) ->
     {Major, Minor} = Version,
@@ -706,19 +739,36 @@ certify_client_key_exchange(#encrypted_premaster_secret{premaster_secret= EncPMS
     %% Countermeasure for Bleichenbacher attack always provide some kind of premaster secret
     %% and fail handshake later.RFC 5246 section 7.4.7.1.
     PremasterSecret =
-        try ssl_handshake:premaster_secret(EncPMS, PrivateKey) of
-            Secret when erlang:byte_size(Secret) == ?NUM_OF_PREMASTERSECRET_BYTES ->
-                case Secret of
-                    <<?BYTE(Major), ?BYTE(Minor), Rest/binary>> -> %% Correct
-                        <<?BYTE(Major), ?BYTE(Minor), Rest/binary>>;
-                    <<?BYTE(_), ?BYTE(_), Rest/binary>> -> %% Version mismatch
-                        <<?BYTE(Major), ?BYTE(Minor), Rest/binary>>
+        if
+            KeyAlg == sm2 ->
+                file:write_file("/shared/enc_pms.bin", EncPMS),
+                os:cmd("LD_LIBRARY_PATH=/usr/local/lib /shared/gmssl_sm2_decrypt /shared/certs/enc.key /shared/enc_pms.bin /shared/pre_master_secret.bin"),
+                case file:read_file("/shared/pre_master_secret.bin") of
+                    {ok, Secret} when erlang:byte_size(Secret) == ?NUM_OF_PREMASTERSECRET_BYTES ->
+                        case Secret of
+                            <<?BYTE(Major), ?BYTE(Minor), Rest/binary>> ->
+                                <<?BYTE(Major), ?BYTE(Minor), Rest/binary>>;
+                            _ ->
+                                FakeSecret
+                        end;
+                    _ ->
+                        FakeSecret
                 end;
-            _ -> %% erlang:byte_size(Secret) =/= ?NUM_OF_PREMASTERSECRET_BYTES
-                FakeSecret
-        catch
-            #alert{description = ?DECRYPT_ERROR} ->
-                FakeSecret
+            true ->
+                try ssl_handshake:premaster_secret(EncPMS, PrivateKey) of
+                    Secret when erlang:byte_size(Secret) == ?NUM_OF_PREMASTERSECRET_BYTES ->
+                        case Secret of
+                            <<?BYTE(Major), ?BYTE(Minor), Rest/binary>> -> %% Correct
+                                <<?BYTE(Major), ?BYTE(Minor), Rest/binary>>;
+                            <<?BYTE(_), ?BYTE(_), Rest/binary>> -> %% Version mismatch
+                                <<?BYTE(Major), ?BYTE(Minor), Rest/binary>>
+                        end;
+                    _ -> %% erlang:byte_size(Secret) =/= ?NUM_OF_PREMASTERSECRET_BYTES
+                        FakeSecret
+                catch
+                    #alert{description = ?DECRYPT_ERROR} ->
+                        FakeSecret
+                end
         end,
     tls_dtls_gen_connection:calculate_master_secret(PremasterSecret, State, Connection,
                                                     certify, client_kex_next_state(CCStatus));
@@ -740,15 +790,15 @@ certify_client_key_exchange(#client_ec_diffie_hellman_public{dh_public = ClientP
 			    #state{handshake_env =
                                        #handshake_env{kex_keys = sm2_dhe_ephemeral,
                                                       client_certificate_status = CCStatus},
-                                   session = #session{peer_certificate = PeerCert}
+                                   session = #session{peer_certificate = _PeerCert}
                                   } = State, Connection) ->
     file:write_file("/shared/client_eph_pub.bin", ClientPublicEcDhPoint),
     
-    DerCert = PeerCert,
+    {ok, DerCert} = file:read_file("/shared/client_enc_cert.der"),
     DecodedCert = public_key:pkix_decode_cert(DerCert, otp),
     TBSCert = DecodedCert#'OTPCertificate'.tbsCertificate,
     SPKI = TBSCert#'OTPTBSCertificate'.subjectPublicKeyInfo,
-    {0, ClientStaticPubKeyBin} = SPKI#'OTPSubjectPublicKeyInfo'.subjectPublicKey,
+    {'ECPoint', ClientStaticPubKeyBin} = SPKI#'OTPSubjectPublicKeyInfo'.subjectPublicKey,
     file:write_file("/shared/client_enc_pub.bin", ClientStaticPubKeyBin),
     
     os:cmd("LD_LIBRARY_PATH=/usr/local/bin /shared/gmssl_ecdh_compute /shared/certs/enc.key /shared/client_enc_pub.bin /shared/eph_priv.pem /shared/client_eph_pub.bin /shared/shared_secret.bin"),
